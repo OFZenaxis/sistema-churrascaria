@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, X, ShoppingBag, Check, Loader2, Banknote, CreditCard, QrCode, Flame } from 'lucide-react'
+import { Plus, X, ShoppingBag, Check, Loader2, Banknote, CreditCard, QrCode, Flame, MapPin } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { submitOrder } from '../app/actions/checkout'
+import { getSessionUser } from '../app/actions/auth'
 import PhoneLogin from './PhoneLogin'
+import AddressPicker, { AddressOption } from './AddressPicker'
 
 const CustomerTracker = dynamic(() => import('./CustomerTracker'), { ssr: false })
 
@@ -39,7 +41,7 @@ const PAYMENT_OPTIONS: { id: PaymentMethod; label: string; icon: React.ReactNode
 
 export default function MenuComponent({ products, isStoreOpen = true }: { products: Product[], isStoreOpen?: boolean }) {
   const router = useRouter()
-  
+
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isLoginOpen, setIsLoginOpen] = useState(false)
@@ -54,6 +56,11 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX')
   const [changeFor, setChangeFor] = useState<string>('')
 
+  // Estado de Endereços
+  const [userAddresses, setUserAddresses] = useState<AddressOption[]>([])
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
+  const [loadingAddresses, setLoadingAddresses] = useState(false)
+
   const activeProducts = products.filter(p => p.isActive !== false)
   const cuts = activeProducts.filter(p => p.type === 'CUT' || p.type === 'COMBO')
   const sides = activeProducts.filter(p => p.type === 'SIDE')
@@ -65,6 +72,27 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
       document.body.style.overflow = 'unset'
     }
   }, [isModalOpen, isLoginOpen, isCheckoutOpen])
+
+  // Carrega endereços do usuário logado quando abre o checkout
+  const loadUserAddresses = async () => {
+    setLoadingAddresses(true)
+    try {
+      const user = await getSessionUser()
+      if (user?.addresses && user.addresses.length > 0) {
+        setUserAddresses(user.addresses as AddressOption[])
+        // Pré-seleciona o endereço padrão
+        const defaultAddr = user.addresses.find(a => a.isDefault) || user.addresses[0]
+        setSelectedAddressId(defaultAddr.id)
+      } else {
+        setUserAddresses([])
+        setSelectedAddressId(null)
+      }
+    } catch (e) {
+      console.error('Erro ao carregar endereços', e)
+    } finally {
+      setLoadingAddresses(false)
+    }
+  }
 
   const openProductModal = (product: Product) => {
     if (!isStoreOpen) return
@@ -117,11 +145,12 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
 
   const cartTotal = cart.reduce((acc, item) => acc + item.totalPrice, 0)
 
-  const openCheckout = () => {
+  const openCheckout = async () => {
     if (cart.length === 0) return
     setCheckoutError('')
     setPaymentMethod('PIX')
     setChangeFor('')
+    await loadUserAddresses()
     setIsCheckoutOpen(true)
   }
 
@@ -132,12 +161,20 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
     const res = await submitOrder(
       cartTotal,
       paymentMethod,
-      paymentMethod === 'CASH' && changeFor ? parseFloat(changeFor) : undefined
+      paymentMethod === 'CASH' && changeFor ? parseFloat(changeFor) : undefined,
+      selectedAddressId || undefined
     )
 
     setIsProcessing(false)
 
     if (res.requiresAuth) {
+      setIsCheckoutOpen(false)
+      setIsLoginOpen(true)
+      return
+    }
+
+    if ((res as any).requiresAddress) {
+      // Usuário logado mas sem endereço — abre o modal de login na etapa de endereço
       setIsCheckoutOpen(false)
       setIsLoginOpen(true)
       return
@@ -180,11 +217,11 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
       {/* Esquerda: Menu principal */}
       <div className="lg:col-span-2 pb-32 lg:pb-0">
         <h2 className="text-3xl font-black mb-8 text-white tracking-tight">Especialidades da Casa</h2>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {cuts.map(product => (
-            <div 
-              key={product.id} 
+            <div
+              key={product.id}
               className={`bg-[#111] rounded-3xl border border-zinc-800 p-6 flex flex-col justify-between h-full transition-all duration-300 group ${isStoreOpen ? 'cursor-pointer hover:border-orange-500/50 hover:shadow-2xl hover:shadow-orange-900/10' : 'opacity-60 cursor-not-allowed'}`}
               onClick={() => openProductModal(product)}
             >
@@ -194,7 +231,7 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                 </div>
                 <p className="text-sm text-zinc-400 line-clamp-2">{product.description}</p>
               </div>
-              
+
               <div className="mt-8 flex items-end justify-between">
                 <span className="font-black text-orange-400 text-2xl">R$ {product.price.toFixed(2)}</span>
                 <span className={`font-bold flex items-center text-sm border px-4 py-2 rounded-full transition-colors ${isStoreOpen ? 'text-orange-500 border-orange-500/30 bg-orange-500/10 group-hover:bg-orange-500 group-hover:text-white' : 'text-zinc-600 border-zinc-700 bg-zinc-900'}`}>
@@ -215,7 +252,7 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
             </div>
             <h3 className="text-2xl font-black text-white">Seu Pedido</h3>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto space-y-4 pr-2">
             {cart.length === 0 ? (
               <div className="text-center py-12 px-4">
@@ -244,7 +281,7 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
               <span className="text-zinc-400 font-bold">Total</span>
               <span className="text-3xl font-black text-white">R$ {cartTotal.toFixed(2)}</span>
             </div>
-            <button 
+            <button
               onClick={openCheckout}
               disabled={cart.length === 0 || isProcessing || !isStoreOpen}
               className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-black text-xl py-5 rounded-2xl shadow-xl shadow-orange-900/40 transition-all flex justify-center items-center active:scale-[0.98]"
@@ -258,13 +295,13 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
       {/* Botão Sticky Mobile */}
       <AnimatePresence>
         {cart.length > 0 && (
-          <motion.div 
+          <motion.div
             initial={{ y: 150 }}
             animate={{ y: 0 }}
             exit={{ y: 150 }}
             className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#050505] via-[#0a0a0a]/95 to-transparent z-40 pb-6"
           >
-            <button 
+            <button
               onClick={openCheckout}
               disabled={isProcessing}
               className="w-full bg-orange-600 active:bg-orange-700 text-white font-black text-lg py-5 px-6 rounded-2xl shadow-[0_0_40px_rgba(234,88,12,0.3)] flex justify-between items-center active:scale-[0.98] transition-transform"
@@ -280,16 +317,17 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
       </AnimatePresence>
 
       {/* Phone Auth Modal */}
-      <PhoneLogin 
-        isOpen={isLoginOpen} 
-        onClose={() => setIsLoginOpen(false)} 
-        onSuccess={() => {
+      <PhoneLogin
+        isOpen={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onSuccess={async () => {
           setIsLoginOpen(false)
+          await loadUserAddresses()
           setIsCheckoutOpen(true)
         }}
       />
 
-      {/* Modal de Checkout: Pagamento */}
+      {/* Modal de Checkout */}
       <AnimatePresence>
         {isCheckoutOpen && (
           <motion.div
@@ -299,20 +337,21 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="bg-[#111] w-full max-w-md rounded-t-[2rem] lg:rounded-[2rem] border-t lg:border border-zinc-800 shadow-2xl overflow-hidden flex flex-col"
+              className="bg-[#111] w-full max-w-md rounded-t-[2rem] lg:rounded-[2rem] border-t lg:border border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             >
-              <div className="p-6 border-b border-zinc-800 bg-zinc-900/60 flex justify-between items-center">
+              <div className="p-6 border-b border-zinc-800 bg-zinc-900/60 flex justify-between items-center shrink-0">
                 <h3 className="text-2xl font-black text-white">Finalizar Pedido</h3>
                 <button onClick={() => setIsCheckoutOpen(false)} className="text-zinc-500 hover:text-white p-2 rounded-full bg-zinc-900 border border-zinc-800">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="p-6 space-y-6 overflow-y-auto">
+              <div className="p-6 space-y-6 overflow-y-auto flex-1">
+
                 {/* Resumo */}
                 <div className="bg-[#0a0a0a] rounded-2xl p-4 border border-zinc-800">
                   <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-3">Resumo</p>
@@ -329,6 +368,38 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                     <span className="font-black text-orange-400 text-xl">R$ {cartTotal.toFixed(2)}</span>
                   </div>
                 </div>
+
+                {/* ====== SELEÇÃO DE ENDEREÇO ====== */}
+                {loadingAddresses ? (
+                  <div className="flex items-center justify-center gap-3 py-6 text-zinc-500">
+                    <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
+                    <span className="font-medium text-sm">Carregando endereços...</span>
+                  </div>
+                ) : userAddresses.length > 0 ? (
+                  <AddressPicker
+                    addresses={userAddresses}
+                    selectedId={selectedAddressId}
+                    onSelect={setSelectedAddressId}
+                    onAddNew={() => {
+                      setIsCheckoutOpen(false)
+                      setIsLoginOpen(true)
+                    }}
+                  />
+                ) : (
+                  <div className="bg-orange-500/5 border border-orange-500/20 rounded-2xl p-4 flex items-center gap-3">
+                    <MapPin className="w-5 h-5 text-orange-400 shrink-0" />
+                    <div>
+                      <p className="text-orange-300 font-bold text-sm">Nenhum endereço cadastrado</p>
+                      <button
+                        type="button"
+                        onClick={() => { setIsCheckoutOpen(false); setIsLoginOpen(true) }}
+                        className="text-orange-400 text-xs underline mt-0.5 hover:text-orange-300"
+                      >
+                        Cadastrar agora →
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Forma de Pagamento */}
                 <div>
@@ -387,10 +458,10 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                 )}
               </div>
 
-              <div className="p-6 border-t border-zinc-800 pb-8 lg:pb-6">
+              <div className="p-6 border-t border-zinc-800 pb-8 lg:pb-6 shrink-0">
                 <button
                   onClick={handleConfirmOrder}
-                  disabled={isProcessing}
+                  disabled={isProcessing || (!selectedAddressId && userAddresses.length > 0) || userAddresses.length === 0}
                   className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-60 active:scale-[0.98] transition-all text-white font-black text-xl py-5 rounded-2xl shadow-xl shadow-orange-900/40 flex justify-center items-center gap-2"
                 >
                   {isProcessing ? (
@@ -399,6 +470,9 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                     `Confirmar Pedido — R$ ${cartTotal.toFixed(2)}`
                   )}
                 </button>
+                {userAddresses.length === 0 && (
+                  <p className="text-center text-zinc-600 text-xs mt-3">Cadastre um endereço para confirmar o pedido</p>
+                )}
               </div>
             </motion.div>
           </motion.div>
@@ -408,14 +482,14 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
       {/* Modal Premium Ponto e Acompanhamentos */}
       <AnimatePresence>
         {isModalOpen && selectedProduct && (
-          <motion.div 
+          <motion.div
             className="fixed inset-0 z-50 flex items-end lg:items-center justify-center bg-black/80 backdrop-blur-md p-0 lg:p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={closeProductModal}
           >
-            <motion.div 
+            <motion.div
               className="bg-[#0a0a0a] lg:bg-[#111] w-full max-w-2xl rounded-t-[2rem] lg:rounded-[2rem] border-t lg:border border-zinc-800 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
@@ -424,7 +498,7 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
               onClick={(e) => e.stopPropagation()}
             >
               <div className="p-6 bg-zinc-900 border-b border-zinc-800 relative">
-                <button 
+                <button
                   onClick={closeProductModal}
                   className="absolute top-6 right-6 bg-black/40 p-2 rounded-full text-zinc-400 hover:text-white transition-colors"
                 >
@@ -456,7 +530,7 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                           type="button"
                           onClick={() => setDoneness(pt.id)}
                           className={`py-5 px-3 rounded-2xl border-2 transition-all font-bold text-sm shadow-sm ${
-                            doneness === pt.id 
+                            doneness === pt.id
                             ? 'border-orange-500 bg-orange-500/10 text-orange-400'
                             : 'border-zinc-800 bg-[#151515] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 hover:bg-[#1a1a1a]'
                           }`}
@@ -484,13 +558,13 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                         const isSelected = selectedSides.includes(side.id)
                         const isDisabled = !isSelected && selectedSides.length >= selectedProduct.maxSides!
                         return (
-                          <div 
+                          <div
                             key={side.id}
                             onClick={() => !isDisabled && handleSelectSide(side.id)}
                             className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer ${
-                              isSelected 
-                                ? 'border-orange-500 bg-orange-500/10' 
-                                : isDisabled 
+                              isSelected
+                                ? 'border-orange-500 bg-orange-500/10'
+                                : isDisabled
                                   ? 'border-zinc-800/50 bg-[#111] opacity-40 cursor-not-allowed'
                                   : 'border-zinc-800 bg-[#151515] hover:border-zinc-700'
                             }`}
@@ -521,7 +595,6 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                   <Plus className="w-6 h-6" /> ADICIONAR À SACOLA
                 </button>
               </div>
-
             </motion.div>
           </motion.div>
         )}

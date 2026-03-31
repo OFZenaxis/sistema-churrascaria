@@ -10,52 +10,73 @@ export async function submitOrder(
   totalAmount: number,
   paymentMethod: PaymentMethod,
   changeFor?: number,
-  payloadAddress?: string
+  addressId?: string
 ) {
   try {
     const user = await getSessionUser()
-    
+
     if (!user) {
       return { success: false, requiresAuth: true }
     }
 
-    const zone = await prisma.deliveryZone.findFirst()
+    // Resolve o endereço escolhido (ou o default do usuário)
+    const targetAddressId = addressId
+      || user.addresses.find(a => a.isDefault)?.id
+      || user.addresses[0]?.id
 
+    if (!targetAddressId) {
+      return { success: false, requiresAddress: true }
+    }
+
+    const address = await prisma.address.findUnique({
+      where: { id: targetAddressId }
+    })
+
+    if (!address) {
+      return { success: false, error: 'Endereço não encontrado.' }
+    }
+
+    // Monta string formatada para exibição na cozinha/motoboy
+    const deliveryAddressStr = [
+      `${address.rua}, ${address.numero}`,
+      address.complemento,
+      address.bairro,
+      `${address.cidade} - ${address.estado}`,
+      `CEP ${address.cep}`
+    ].filter(Boolean).join(', ')
+
+    let lat = address.lat ?? null
+    let lng = address.lng ?? null
+
+    // Geocoding se não tiver cache no Address
     const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
-    const finalAddress = payloadAddress || user.address || 'Endereço não informado'
-    
-    let lat: number | null = user.lat ?? null
-    let lng: number | null = user.lng ?? null
-
-    // Cache de geocoding: só chama a API se o endereço é diferente ou não tem coords
-    const addressChanged = payloadAddress && payloadAddress !== user.address
-    const hasNoCoords = !user.lat || !user.lng
-
-    if (mapboxToken && finalAddress !== 'Endereço não informado' && (hasNoCoords || addressChanged)) {
+    if (mapboxToken && (!lat || !lng)) {
       try {
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(finalAddress)}.json?access_token=${mapboxToken}&limit=1`
+        const fullAddress = `${address.rua}, ${address.numero}, ${address.bairro}, ${address.cidade}, ${address.estado}, Brasil`
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(fullAddress)}.json?access_token=${mapboxToken}&limit=1`
         const geoRes = await fetch(url, { next: { revalidate: 0 } })
-        if (!geoRes.ok) throw new Error(`Mapbox returned ${geoRes.status}`)
-        
-        const geoData = await geoRes.json()
-        if (geoData.features?.length > 0) {
-          const [lon, lati] = geoData.features[0].center
-          lng = lon
-          lat = lati
 
-          // Salva no perfil do usuário para próximas vezes (cache)
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { lat, lng, address: finalAddress }
-          })
-        } else {
-          return { success: false, error: 'Endereço não localizado. Por favor, tente ser mais específico (incluir cidade).' }
+        if (geoRes.ok) {
+          const geoData = await geoRes.json()
+          if (geoData.features?.length > 0) {
+            const [lon, lati] = geoData.features[0].center
+            lng = lon
+            lat = lati
+
+            // Salva no cache do Address
+            await prisma.address.update({
+              where: { id: address.id },
+              data: { lat, lng }
+            })
+          }
         }
       } catch (err) {
         console.error("Geocoding failed", err)
-        // Não bloqueia o pedido se o geocoding falhar — apenas não terá rota no mapa
+        // Não bloqueia o pedido
       }
     }
+
+    const zone = await prisma.deliveryZone.findFirst()
 
     const order = await prisma.order.create({
       data: {
@@ -68,9 +89,10 @@ export async function submitOrder(
         changeFor: paymentMethod === 'CASH' ? (changeFor ?? null) : null,
         deliveryZoneId: zone?.id,
         estimatedDeliveryTime: 30,
-        deliveryAddress: finalAddress,
+        deliveryAddress: deliveryAddressStr,
+        addressId: address.id,
         customerLat: lat,
-        customerLng: lng
+        customerLng: lng,
       }
     })
 

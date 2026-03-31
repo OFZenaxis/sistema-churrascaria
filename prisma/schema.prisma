@@ -12,13 +12,36 @@ model User {
   id        String   @id @default(uuid())
   name      String
   phone     String   @unique
-  address   String?
-  lat       Float?   // Cache geocoding latitude
-  lng       Float?   // Cache geocoding longitude
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   orders    Order[]
+  addresses Address[]
+}
+
+// ======= ADDRESSES =======
+model Address {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  label       String   @default("Casa") // "Casa", "Trabalho", "Outro"
+  cep         String
+  rua         String
+  numero      String   // Obrigatório — motoboy precisa saber
+  complemento String   // Obrigatório — Lote, Quadra, etc.
+  bairro      String
+  cidade      String
+  estado      String
+
+  // Cache de geocoding
+  lat         Float?
+  lng         Float?
+
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  orders      Order[]
 }
 
 // ======= CATALOG =======
@@ -42,7 +65,7 @@ model Product {
   price       Float
   type        ProductType
   imageUrl    String?
-  
+
   // Controle de estoques/cardápio
   isActive    Boolean   @default(true)
 
@@ -71,8 +94,12 @@ model Order {
   user                  User?       @relation(fields: [userId], references: [id])
   customerName          String // Fallback if no user is registered
   customerPhone         String
-  deliveryAddress       String? // Endereço de entrega específico do pedido
-  
+  deliveryAddress       String?  // String formatada para exibição
+
+  // Referência ao Address salvo do cliente
+  addressId             String?
+  address               Address?    @relation(fields: [addressId], references: [id])
+
   status                OrderStatus @default(PENDING)
   totalAmount           Float
   paymentMethod         String?     // 'PIX' | 'CARD' | 'CASH'
@@ -109,18 +136,18 @@ model OrderItem {
   id          String         @id @default(uuid())
   orderId     String
   order       Order          @relation(fields: [orderId], references: [id])
-  
+
   productId   String
   product     Product        @relation(fields: [productId], references: [id])
-  
+
   quantity    Int            @default(1)
   unitPrice   Float
 
   // Mandatory for Cuts
-  doneness    MeatDoneness?  
+  doneness    MeatDoneness?
 
   // JSON to store selected sides for Combos (e.g. ["Arroz", "Fritas"])
-  comboSides  String?        
+  comboSides  String?
 }
 
 // ======= LOGISTICS =======
@@ -128,7 +155,7 @@ model DeliveryZone {
   id          String   @id @default(uuid())
   name        String   // e.g., "Centro", "Jardim Botânico"
   fee         Float    // Delivery fee for this zone
-  
+
   orders      Order[]
 }
 
@@ -136,10 +163,10 @@ model Delivery {
   id          String   @id @default(uuid())
   orderId     String   @unique
   order       Order    @relation(fields: [orderId], references: [id])
-  
+
   driverName  String
   driverPhone String?
-  
+
   dispatchedAt DateTime @default(now())
   deliveredAt  DateTime?
 }
