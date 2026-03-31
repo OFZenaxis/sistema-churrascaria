@@ -66,6 +66,7 @@ model Order {
   user                  User?       @relation(fields: [userId], references: [id])
   customerName          String // Fallback if no user is registered
   customerPhone         String
+  deliveryAddress       String? // Endereço de entrega específico do pedido
   
   status                OrderStatus @default(PENDING)
   totalAmount           Float
