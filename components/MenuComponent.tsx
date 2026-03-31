@@ -10,6 +10,7 @@ import { getSessionUser } from '../app/actions/auth'
 import PhoneLogin from './PhoneLogin'
 import AddressPicker, { AddressOption } from './AddressPicker'
 import ProductCard from './ProductCard'
+import ProductModal from './ProductModal'
 
 const CustomerTracker = dynamic(() => import('./CustomerTracker'), { ssr: false })
 
@@ -28,8 +29,7 @@ export type Product = {
 type CartItem = {
   id: string
   product: Product
-  doneness?: string
-  sides: string[]
+  optionsText?: string
   totalPrice: number
 }
 
@@ -41,7 +41,11 @@ const PAYMENT_OPTIONS: { id: PaymentMethod; label: string; icon: React.ReactNode
   { id: 'CASH', label: 'Dinheiro', icon: <Banknote className="w-5 h-5" /> },
 ]
 
-const CATEGORIES = ['TODOS', 'CARNES', 'COMBOS', 'ACOMPANHAMENTOS']
+const CATEGORIES = [
+  { id: 'MARMITAS', label: 'Marmitas', img: '🥩', type: 'COMBO' },
+  { id: 'BEBIDAS', label: 'Bebidas', img: '🥤', type: 'BEVERAGE' },
+  { id: 'ADICIONAIS', label: 'Adicionais', img: '🍟', type: 'SIDE' }
+]
 
 function BottomNav({ cartCount, onCartClick }: { cartCount: number; onCartClick: () => void }) {
   const router = useRouter()
@@ -54,7 +58,7 @@ function BottomNav({ cartCount, onCartClick }: { cartCount: number; onCartClick:
   ]
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 h-[68px] bg-[#0a0a0a]/85 backdrop-blur-xl border-t border-[#1f1f1f] flex items-stretch z-[100] safe-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 min-h-[64px] pt-1.5 pb-[max(env(safe-area-inset-bottom,12px),12px)] bg-[#0a0a0a]/85 backdrop-blur-xl border-t border-[#1f1f1f] flex items-stretch z-[100]">
       {tabs.map(tab => {
         const isActive = tab.path ? pathname === tab.path : false
         const isCart = tab.id === 'cart'
@@ -95,7 +99,7 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
   const [cart, setCart] = useState<CartItem[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [checkoutError, setCheckoutError] = useState('')
-  const [activeCategory, setActiveCategory] = useState('TODOS')
+  const [activeCategory, setActiveCategory] = useState(CATEGORIES[0].id)
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX')
   const [changeFor, setChangeFor] = useState<string>('')
@@ -110,12 +114,11 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
   const cartCount = cart.length
   const cartTotal = cart.reduce((acc, item) => acc + item.totalPrice, 0)
 
-  // Filtro por categoria
+  // Filtro por categoria (agora baseado nos novos tipos/mix Marmita-First)
   const menuItems = activeProducts.filter(p => {
-    if (activeCategory === 'TODOS') return p.type === 'CUT' || p.type === 'COMBO'
-    if (activeCategory === 'CARNES') return p.type === 'CUT'
-    if (activeCategory === 'COMBOS') return p.type === 'COMBO'
-    if (activeCategory === 'ACOMPANHAMENTOS') return p.type === 'SIDE'
+    if (activeCategory === 'MARMITAS') return p.type === 'COMBO'
+    if (activeCategory === 'BEBIDAS') return p.type === 'BEVERAGE'
+    if (activeCategory === 'ADICIONAIS') return p.type === 'SIDE'
     return true
   })
 
@@ -135,9 +138,12 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
     setLoadingAddresses(true)
     try {
       const user = await getSessionUser()
+      // @ts-ignore: Relation tipagem pendente no retorno server-action
       if (user?.addresses?.length) {
+        // @ts-ignore
         setUserAddresses(user.addresses as AddressOption[])
-        const def = user.addresses.find(a => a.isDefault) || user.addresses[0]
+        // @ts-ignore
+        const def = user.addresses.find((a: any) => a.isDefault) || user.addresses[0]
         setSelectedAddressId(def.id)
       } else {
         setUserAddresses([])
@@ -153,8 +159,6 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
   const openProductModal = (product: Product) => {
     if (!isStoreOpen) return
     setSelectedProduct(product)
-    setDoneness('')
-    setSelectedSides([])
     setIsModalOpen(true)
   }
 
@@ -163,27 +167,12 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
     setTimeout(() => setSelectedProduct(null), 300)
   }
 
-  const handleSelectSide = (sideId: string) => {
-    if (!selectedProduct?.maxSides) return
-    if (selectedSides.includes(sideId)) {
-      setSelectedSides(prev => prev.filter(id => id !== sideId))
-    } else if (selectedSides.length < selectedProduct.maxSides) {
-      setSelectedSides(prev => [...prev, sideId])
-    }
-  }
-
-  const addToCart = () => {
-    if (!selectedProduct) return
-    if ((selectedProduct.type === 'CUT' || selectedProduct.type === 'COMBO') && !doneness) {
-      alert('Selecione o ponto da carne!')
-      return
-    }
+  const handleAddToCart = (itemData: { product: Product, optionsText: string, totalPrice: number }) => {
     setCart(prev => [...prev, {
       id: Math.random().toString(36).substr(2, 9),
-      product: selectedProduct,
-      doneness,
-      sides: selectedSides,
-      totalPrice: selectedProduct.price
+      product: itemData.product,
+      optionsText: itemData.optionsText,
+      totalPrice: itemData.totalPrice
     }])
     closeProductModal()
   }
@@ -247,24 +236,33 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
         </div>
       )}
 
-      {/* ── PILLS de Categoria ── */}
-      <div className="scroll-pills pt-2 pb-1">
-        {CATEGORIES.map(cat => (
-          <button
-            key={cat}
-            className={`pill ${activeCategory === cat ? 'active' : ''}`}
-            onClick={() => setActiveCategory(cat)}
-          >
-            {cat === 'CARNES' ? '🥩 ' : cat === 'COMBOS' ? '🎁 ' : cat === 'ACOMPANHAMENTOS' ? '🍟 ' : ''}
-            {cat}
-          </button>
-        ))}
+      {/* ── STORIES DE CATEGORIA (Instagram Style) ── */}
+      <div className="story-nav">
+        {CATEGORIES.map(cat => {
+          const isActive = activeCategory === cat.id
+          return (
+            <div 
+              key={cat.id} 
+              className={`story-item ${!isActive ? 'inactive' : ''}`}
+              onClick={() => setActiveCategory(cat.id)}
+            >
+              <div className="story-ring">
+                <div className="story-img-container shadow-inner">
+                  {cat.img}
+                </div>
+              </div>
+              <span className="story-label">
+                {cat.label}
+              </span>
+            </div>
+          )
+        })}
       </div>
 
       {/* ── TÍTULO da seção ── */}
-      <div className="px-4 pt-4 pb-2">
-        <h2 className="text-lg font-black text-white uppercase tracking-tight">
-          {activeCategory === 'TODOS' ? 'CARNES NA BRASA' : activeCategory}
+      <div className="px-5 pt-3 pb-2">
+        <h2 className="text-xl font-black text-white uppercase tracking-tight">
+          {CATEGORIES.find(c => c.id === activeCategory)?.label || 'Cardápio'}
         </h2>
         <p className="text-zinc-600 text-xs mt-0.5">{menuItems.length} opções disponíveis</p>
       </div>
@@ -341,16 +339,33 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                     {cart.map((item, i) => (
                       <div key={i} className="flex justify-between text-sm items-start gap-2">
                         <div className="flex-1 min-w-0">
-                          <span className="text-zinc-200 font-bold block truncate">{item.product.name}</span>
-                          {item.doneness && <span className="text-zinc-600 text-xs">Ponto: {item.doneness.replace(/_/g, ' ')}</span>}
+                          <span className="text-zinc-200 font-bold block truncate leading-tight mb-0.5">{item.product.name}</span>
+                          {item.optionsText && <span className="text-zinc-500 text-[11px] block pr-4 leading-snug">{item.optionsText}</span>}
                         </div>
-                        <span className="text-[#E31C1C] font-black whitespace-nowrap">R$ {item.totalPrice.toFixed(2)}</span>
+                        <span className="text-[#E31C1C] font-black whitespace-nowrap pt-0.5">R$ {item.totalPrice.toFixed(2)}</span>
                       </div>
                     ))}
                   </div>
                   <div className="border-t border-[#1f1f1f] mt-3 pt-3 flex justify-between items-center">
                     <span className="font-black text-white text-sm">TOTAL</span>
                     <span className="font-black text-[#E31C1C] text-2xl">R$ {cartTotal.toFixed(2)}</span>
+                  </div>
+                  
+                  {/* Gamification Barra Progress: R$ 100 para frete grátis */}
+                  <div className="mt-4 bg-[#1a1a1a] rounded-xl p-3 border border-[#2a2a2a]">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Entrega</span>
+                      <span className="text-[11px] font-black text-[#E31C1C] uppercase">
+                        {cartTotal >= 100 ? 'Frete Grátis Liberado! 🎁' : `Faltam R$ ${(100 - cartTotal).toFixed(2)} para grátis`}
+                      </span>
+                    </div>
+                    <div className="w-full h-1.5 bg-[#0a0a0a] rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min(100, (cartTotal / 100) * 100)}%` }}
+                        className={`h-full ${cartTotal >= 100 ? 'bg-green-500' : 'bg-[#E31C1C]'}`}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -463,126 +478,13 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
         )}
       </AnimatePresence>
 
-      {/* ── MODAL Ponto da Carne ── */}
-      <AnimatePresence>
-        {isModalOpen && selectedProduct && (
-          <motion.div
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/85"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={closeProductModal}
-          >
-            <motion.div
-              className="bg-[#0d0d0d] w-full max-w-lg rounded-t-[28px] border-t border-[#1f1f1f] overflow-hidden flex flex-col max-h-[90vh]"
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex justify-center pt-3 pb-1">
-                <div className="w-10 h-1 bg-[#333] rounded-full" />
-              </div>
-
-              <div className="px-5 pt-1 pb-4 border-b border-[#1a1a1a] relative">
-                <button onClick={closeProductModal} className="absolute top-1 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-[#1a1a1a] text-zinc-500 hover:text-white">
-                  <X className="w-4 h-4" />
-                </button>
-                {isHot(selectedProduct.id) && <div className="badge-hot mb-2">🔥 MAIS PEDIDO</div>}
-                <h3 className="text-2xl font-black text-white pr-10">{selectedProduct.name}</h3>
-                {selectedProduct.description && (
-                  <p className="text-zinc-500 text-sm mt-1">{selectedProduct.description}</p>
-                )}
-              </div>
-
-              <div className="overflow-y-auto flex-1 px-5 py-5 space-y-6">
-
-                {/* Ponto da Carne */}
-                {(selectedProduct.type === 'CUT' || selectedProduct.type === 'COMBO') && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className="bg-[#E31C1C]/10 text-[#E31C1C] border border-[#E31C1C]/20 text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider">OBRIGATÓRIO</span>
-                      <h4 className="text-base font-black text-white uppercase tracking-tight">O Ponto Ideal</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {[
-                        { id: '1_MAL_PASSADO', label: 'Mal passado' },
-                        { id: '2_PONTO_PARA_MAL', label: 'Ponto para mal' },
-                        { id: '3_AO_PONTO', label: 'Ao Ponto' },
-                        { id: '4_PONTO_PARA_BEM', label: 'Ponto para bem' },
-                        { id: '5_BEM_PASSADO', label: 'Bem passado' }
-                      ].map(pt => (
-                        <button
-                          key={pt.id}
-                          type="button"
-                          onClick={() => setDoneness(pt.id)}
-                          className={`py-4 px-3 rounded-2xl border-2 transition-all font-bold text-sm min-h-[56px] ${
-                            doneness === pt.id
-                              ? 'border-[#E31C1C] bg-[#E31C1C]/10 text-[#E31C1C]'
-                              : 'border-[#1f1f1f] bg-[#111] text-zinc-500 hover:border-[#333] hover:text-zinc-300'
-                          }`}
-                        >
-                          {pt.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Acompanhamentos do Combo */}
-                {selectedProduct.type === 'COMBO' && selectedProduct.maxSides && (
-                  <div>
-                    <div className="flex justify-between items-center mb-4">
-                      <div className="flex items-center gap-2">
-                        <span className="bg-[#1a1a1a] text-zinc-400 border border-[#2a2a2a] text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider">OPCIONAL</span>
-                        <h4 className="text-base font-black text-white uppercase tracking-tight">Acompanhamentos</h4>
-                      </div>
-                      <span className="text-xs font-bold bg-[#111] px-3 py-1 rounded-full text-zinc-500 border border-[#1f1f1f]">
-                        {selectedSides.length}/{selectedProduct.maxSides}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-2">
-                      {sides.map(side => {
-                        const isSelected = selectedSides.includes(side.id)
-                        const isDisabled = !isSelected && selectedSides.length >= selectedProduct.maxSides!
-                        return (
-                          <div
-                            key={side.id}
-                            onClick={() => !isDisabled && handleSelectSide(side.id)}
-                            className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all min-h-[56px] ${
-                              isSelected ? 'border-[#E31C1C] bg-[#E31C1C]/8'
-                              : isDisabled ? 'border-[#1a1a1a] opacity-30 cursor-not-allowed'
-                              : 'border-[#1f1f1f] bg-[#111] cursor-pointer hover:border-[#2a2a2a]'
-                            }`}
-                          >
-                            <p className={`font-bold text-base ${isSelected ? 'text-[#E31C1C]' : 'text-zinc-300'}`}>{side.name}</p>
-                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                              isSelected ? 'border-[#E31C1C] bg-[#E31C1C]' : 'border-[#333] bg-transparent'
-                            }`}>
-                              {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="px-5 pb-8 pt-4 border-t border-[#1a1a1a] safe-bottom">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-zinc-500 font-bold text-sm uppercase tracking-wide">Valor</span>
-                  <span className="text-[#E31C1C] font-black text-2xl">R$ {selectedProduct.price.toFixed(2)}</span>
-                </div>
-                <button onClick={addToCart} className="btn-brasa w-full">
-                  <Plus className="w-5 h-5" /> ADICIONAR AO PEDIDO
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* ── NOVO MARMITA BUILDER MODAL ── */}
+      <ProductModal
+        product={selectedProduct}
+        isOpen={isModalOpen}
+        onClose={closeProductModal}
+        onAddToCart={handleAddToCart}
+      />
 
       {/* ── BOTTOM NAV ── */}
       <BottomNav cartCount={cartCount} onCartClick={openCheckout} />

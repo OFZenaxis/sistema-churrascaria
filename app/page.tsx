@@ -32,7 +32,7 @@ export default function Home() {
     <div className="min-h-screen bg-black pb-nav">
 
       {/* ── HERO ── */}
-      <header className="relative overflow-hidden bg-black pt-6 pb-4 px-4 text-center">
+      <header className="relative overflow-hidden bg-black pt-4 pb-2 px-4 text-center">
         {/* Glow decoration */}
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-48 rounded-full bg-red-700/20 blur-3xl" />
@@ -40,31 +40,32 @@ export default function Home() {
 
         <div className="relative z-10 max-w-xl mx-auto animate-fade-up">
           {/* Badge institucional */}
-          <div className="inline-flex items-center gap-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-full px-4 py-1.5 mb-5">
-            <span className="text-red-500 text-xs">🔥</span>
-            <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">
-              A Pioneira do Jardim Ingá
+          <div className="inline-flex items-center gap-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-full px-3 py-1 mb-3">
+            <span className="text-red-500 text-[10px]">🔥</span>
+            <span className="text-zinc-400 text-[10px] font-bold uppercase tracking-widest">
+              A Pioneira
             </span>
           </div>
 
           {/* Logo */}
-          <div className="flex justify-center mb-4 mt-2">
+          <div className="flex justify-center mb-2 mt-1">
             <Image 
               src="/logochurrascaria.svg" 
               alt="Logo Churrascaria Costa e Souza" 
-              width={260} 
-              height={100}
+              width={200} 
+              height={55}
               priority
-              className="w-auto h-24 object-contain drop-shadow-[0_4px_16px_rgba(227,28,28,0.15)]"
+              style={{ width: 'auto', height: '55px' }}
+              className="object-contain"
             />
           </div>
-          <p className="text-sm text-zinc-500 font-bold uppercase tracking-[0.18em] mb-4">
+          <p className="text-xs text-zinc-500 font-bold uppercase tracking-[0.16em] mb-3">
             Churrascaria · Luziânia · GO
           </p>
 
-          <p className="text-zinc-400 text-sm leading-relaxed max-w-xs mx-auto">
+          <p className="text-zinc-400 text-xs hidden sm:block leading-relaxed max-w-xs mx-auto">
             Sabor e Tradição desde o início.<br/>
-            <span className="text-zinc-500">Carnes selecionadas direto na brasa, entregues na sua porta.</span>
+            <span className="text-zinc-500">Carnes na brasa, entregues na sua porta.</span>
           </p>
         </div>
       </header>

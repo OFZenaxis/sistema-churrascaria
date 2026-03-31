@@ -20,46 +20,56 @@ async function main() {
     data: { name: 'Zona Sul', fee: 12.0 }
   })
   
-  // 2. Categories
-  const catCuts = await prisma.category.create({
-    data: { name: 'Cortes Especiais' }
+  // 2. Categories (Adaptado para Stories)
+  const catMarmitas = await prisma.category.create({
+    data: { name: 'Marmitas' }
   })
-  const catSides = await prisma.category.create({
-    data: { name: 'Acompanhamentos' }
+  const catBebidas = await prisma.category.create({
+    data: { name: 'Bebidas' }
   })
-  const catCombos = await prisma.category.create({
-    data: { name: 'Combos' }
+  const catAdicionais = await prisma.category.create({
+    data: { name: 'Adicionais' }
   })
 
-  // 3. Sides
+  // 3. Adicionais (Upsells)
   await prisma.product.createMany({
     data: [
-      { name: 'Arroz Biro-Biro', price: 15.9, type: ProductType.SIDE, categoryId: catSides.id },
-      { name: 'Farofa de Ovos', price: 12.9, type: ProductType.SIDE, categoryId: catSides.id },
-      { name: 'Fritas', price: 18.0, type: ProductType.SIDE, categoryId: catSides.id },
-      { name: 'Salada de Maionese', price: 14.5, type: ProductType.SIDE, categoryId: catSides.id },
+      { name: 'Linguiça Toscana (Un.)', price: 4.0, type: ProductType.SIDE, categoryId: catAdicionais.id },
+      { name: 'Ovo Frito', price: 3.0, type: ProductType.SIDE, categoryId: catAdicionais.id },
+      { name: 'Porção Extra de Carne Assada', price: 10.0, type: ProductType.SIDE, categoryId: catAdicionais.id },
+      { name: 'Mandioca Extra', price: 6.0, type: ProductType.SIDE, categoryId: catAdicionais.id },
+      { name: 'Coca-Cola 2L', price: 14.0, type: ProductType.BEVERAGE, categoryId: catBebidas.id },
+      { name: 'Guaraná Antarctica 2L', price: 12.0, type: ProductType.BEVERAGE, categoryId: catBebidas.id },
+      { name: 'Coca-Cola Lata', price: 6.0, type: ProductType.BEVERAGE, categoryId: catBebidas.id },
     ]
   })
 
-  // 4. Cuts
+  // 4. Marmitas (Marmita-First)
+  // Tipo COMBO para disparar a abertura do novo <ProductModal /> (Marmita Builder)
   await prisma.product.createMany({
     data: [
-      { name: 'Picanha Angus (500g)', price: 129.9, type: ProductType.CUT, categoryId: catCuts.id, description: 'Corte nobre, extremamente macio e suculento.' },
-      { name: 'Bife Ancho (400g)', price: 95.0, type: ProductType.CUT, categoryId: catCuts.id, description: 'Extraído do lombo do boi, com gordura entremeada.' },
-      { name: 'Maminha na Manteiga (500g)', price: 85.0, type: ProductType.CUT, categoryId: catCuts.id, description: 'Macia e com sabor característico da manteiga de garrafa.' }
+      { 
+        name: 'Marmita Churrasco G', 
+        price: 36.0, 
+        type: ProductType.COMBO, 
+        categoryId: catMarmitas.id, 
+        description: 'A pioneira do Jardim Ingá. Acompanha arroz, feijão tropeiro, mandioca e o mix de churrasco da casa (Carne Assada, Frango, Linguiça).',
+      },
+      { 
+        name: 'Marmita Churrasco M', 
+        price: 28.0, 
+        type: ProductType.COMBO, 
+        categoryId: catMarmitas.id, 
+        description: 'A pioneira do Jardim Ingá. Acompanha arroz, feijão tropeiro, mandioca e o mix de churrasco da casa.',
+      },
+      { 
+        name: 'Marmita Econômica', 
+        price: 19.9, 
+        type: ProductType.COMBO, 
+        categoryId: catMarmitas.id, 
+        description: 'No precinho! Acompanha arroz, feijão tropeiro, mandioca e o mix de churrasco da casa.',
+      }
     ]
-  })
-
-  // 5. Combos (Carnes que permitem acompanhar 3 guarnições)
-  await prisma.product.create({
-    data: {
-      name: 'Combo Picanha Padrão',
-      price: 159.0,
-      type: ProductType.COMBO,
-      categoryId: catCombos.id,
-      description: '1 Picanha (500g) + 3 Acompanhamentos à sua escolha.',
-      maxSides: 3
-    }
   })
 
   console.log('✅ Seed finished successfully!')

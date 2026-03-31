@@ -33,7 +33,7 @@ export default function ProductCard({
         {product.imageUrl ? (
           <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
         ) : (
-          <span className="text-3xl opacity-20">🥩</span>
+          <span className="text-[50px] opacity-20 leading-none">🥩</span>
         )}
       </div>
 
@@ -44,10 +44,13 @@ export default function ProductCard({
           <h3 className="font-bold text-white text-[15px] leading-snug line-clamp-2 pr-2">
             {product.name}
           </h3>
-          {/* Badge MAIS PEDIDO logo abaixo do título */}
+          {/* Bandeira de Prova Social */}
           {isHot && (
             <div className="inline-flex mt-1 items-center gap-1 bg-[#E31C1C] text-white text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded">
-              🔥 Mais Pedido
+              {product.name === 'Marmita Churrasco G' 
+                ? '🔥 A MAIS PEDIDA NO JARDIM INGÁ' 
+                : '🔥 18 pediram hoje'
+              }
             </div>
           )}
           {product.description && (
@@ -65,10 +68,10 @@ export default function ProductCard({
         </div>
       </div>
 
-      {/* Botão '+' Inferior Direito */}
-      <div className="absolute bottom-3.5 right-3.5">
+      {/* Botão '+' Inferior Direito (Touch Size maior) */}
+      <div className="absolute bottom-2.5 right-2.5">
         <button
-          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
             isStoreOpen 
               ? 'bg-[#E31C1C] text-white hover:bg-[#FF2E2E] active:scale-95 shadow-md shadow-red-900/20' 
               : 'bg-[#222] text-zinc-600'
@@ -78,7 +81,7 @@ export default function ProductCard({
             if (isStoreOpen) onClick()
           }}
         >
-          <Plus className="w-5 h-5" />
+          <Plus className="w-[22px] h-[22px]" />
         </button>
       </div>
 
