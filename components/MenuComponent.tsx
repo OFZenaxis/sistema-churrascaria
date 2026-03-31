@@ -35,12 +35,13 @@ type CartItem = {
   displayPrice: number  // Apenas para exibição local, NÃO enviado ao backend
 }
 
-type PaymentMethod = 'PIX' | 'CARD' | 'CASH'
+type PaymentMethod = 'PIX' | 'CARD_ONLINE' | 'CARD_MACHINE' | 'CASH'
 
-const PAYMENT_OPTIONS: { id: PaymentMethod; label: string; icon: React.ReactNode }[] = [
-  { id: 'PIX', label: 'Pix', icon: <QrCode className="w-5 h-5" /> },
-  { id: 'CARD', label: 'Cartão', icon: <CreditCard className="w-5 h-5" /> },
-  { id: 'CASH', label: 'Dinheiro', icon: <Banknote className="w-5 h-5" /> },
+const PAYMENT_OPTIONS: { id: PaymentMethod; label: string; icon: React.ReactNode; desc: string }[] = [
+  { id: 'PIX', label: 'Pagar agora via PIX', icon: <QrCode className="w-5 h-5" />, desc: 'ONLINE' },
+  { id: 'CARD_ONLINE', label: 'Cartão de Crédito', icon: <CreditCard className="w-5 h-5" />, desc: 'ONLINE' },
+  { id: 'CARD_MACHINE', label: 'Cartão na Entrega', icon: <CreditCard className="w-5 h-5" />, desc: 'MOTOBOY' },
+  { id: 'CASH', label: 'Dinheiro', icon: <Banknote className="w-5 h-5" />, desc: 'MOTOBOY' },
 ]
 
 const CATEGORIES = [
@@ -223,8 +224,8 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
       setCart([])
       setIsCheckoutOpen(false)
       
-      if (paymentMethod === 'PIX' || paymentMethod === 'CARD') {
-        router.push(`/pagamento/${res.orderId}`)
+      if (paymentMethod === 'PIX' || paymentMethod === 'CARD_ONLINE') {
+        router.push(`/pagamento/${res.orderId}?method=${paymentMethod}`)
       } else {
         router.push(`/pedido/${res.orderId}`)
       }
@@ -416,20 +417,21 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                 {/* Pagamento */}
                 <div>
                   <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-3">Forma de Pagamento</p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-3">
                     {PAYMENT_OPTIONS.map(opt => (
                       <button
                         key={opt.id}
                         type="button"
                         onClick={() => setPaymentMethod(opt.id)}
-                        className={`flex flex-col items-center gap-2 py-4 rounded-2xl border-2 transition-all font-black text-xs uppercase min-h-[72px] ${
+                        className={`flex flex-col items-center justify-center gap-1.5 py-4 px-2 rounded-2xl border-2 transition-all font-black text-xs uppercase min-h-[80px] ${
                           paymentMethod === opt.id
                             ? 'border-[#E31C1C] bg-[#E31C1C]/10 text-[#E31C1C]'
                             : 'border-[#1f1f1f] bg-[#111] text-zinc-600 hover:border-[#2a2a2a]'
                         }`}
                       >
                         {opt.icon}
-                        {opt.label}
+                        <span>{opt.label}</span>
+                        <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">{opt.desc}</span>
                       </button>
                     ))}
                   </div>

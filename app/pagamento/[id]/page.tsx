@@ -1,9 +1,17 @@
 import { prisma } from '@/lib/prisma'
 import { redirect } from 'next/navigation'
 import PaymentClient from './PaymentClient'
+import PaymentPixClient from './PaymentPixClient'
 
-export default async function PagamentoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PagamentoPage({ 
+  params,
+  searchParams
+}: { 
+  params: Promise<{ id: string }>,
+  searchParams: Promise<{ method?: string }>
+}) {
   const { id } = await params
+  const { method } = await searchParams
   
   const order = await prisma.order.findUnique({
     where: { id },
@@ -22,11 +30,16 @@ export default async function PagamentoPage({ params }: { params: Promise<{ id: 
         <p className="text-zinc-400 font-medium mb-8">Pedido Nº {order.id.split('-')[0].toUpperCase()} • <span className="text-[#E31C1C] font-black">R$ {order.totalAmount.toFixed(2)}</span></p>
         
         <div className="bg-[#111] p-4 rounded-3xl border border-[#222]">
-          <PaymentClient 
-            orderId={order.id} 
-            amount={order.totalAmount} 
-            pubKey={process.env.NEXT_PUBLIC_MP_PUBLIC_KEY || ''} 
-          />
+          {method === 'PIX' ? (
+            <PaymentPixClient orderId={order.id} amount={order.totalAmount} />
+          ) : (
+            <PaymentClient 
+              orderId={order.id} 
+              amount={order.totalAmount} 
+              pubKey={process.env.NEXT_PUBLIC_MP_PUBLIC_KEY || ''} 
+              method={method}
+            />
+          )}
         </div>
       </div>
     </main>

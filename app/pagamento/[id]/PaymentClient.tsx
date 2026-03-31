@@ -3,7 +3,7 @@ import React, { useEffect } from 'react'
 import { initMercadoPago, Payment } from '@mercadopago/sdk-react'
 import { useRouter } from 'next/navigation'
 
-export default function PaymentClient({ orderId, amount, pubKey }: { orderId: string, amount: number, pubKey: string }) {
+export default function PaymentClient({ orderId, amount, pubKey, method }: { orderId: string, amount: number, pubKey: string, method?: string }) {
   const router = useRouter()
 
   useEffect(() => {
@@ -19,12 +19,16 @@ export default function PaymentClient({ orderId, amount, pubKey }: { orderId: st
   const initialization = {
     amount,
     preferenceId: undefined,
+    payer: {
+      email: "cliente@churras.com" // Necessário para o Brick não falhar na exibição do PIX
+    }
   };
 
   const customization = {
     paymentMethods: {
-      pix: 'all' as any,
-      creditCard: 'all' as any,
+      ...(method === 'PIX' ? { pix: 'all' as any } : {}),
+      ...(method === 'CARD_ONLINE' ? { creditCard: 'all' as any } : {}),
+      ...(!method ? { pix: 'all' as any, creditCard: 'all' as any } : {})
     },
     visual: {
       style: {
@@ -34,7 +38,7 @@ export default function PaymentClient({ orderId, amount, pubKey }: { orderId: st
         }
       }
     }
-  };
+  } as any;
 
   const onSubmit = async (param: any) => {
     return new Promise((resolve, reject) => {

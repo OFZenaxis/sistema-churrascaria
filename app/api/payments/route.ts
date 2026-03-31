@@ -90,7 +90,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ 
       status: mpRes.status, 
       status_detail: mpRes.status_detail, 
-      id: mpRes.id 
+      id: mpRes.id,
+      qr_code: payment_method_id === 'pix' ? mpRes.point_of_interaction?.transaction_data?.qr_code : undefined,
+      qr_code_base64: payment_method_id === 'pix' ? mpRes.point_of_interaction?.transaction_data?.qr_code_base64 : undefined,
     });
   } catch (err: any) {
     console.error('Payment Error:', err?.message || err);

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { OrderStatus } from '@prisma/client'
 import { getSessionUser } from './auth'
 
-type PaymentMethod = 'PIX' | 'CARD' | 'CASH'
+type PaymentMethod = 'PIX' | 'CARD_ONLINE' | 'CARD_MACHINE' | 'CASH'
 
 // ══════════════════════════════════════════════════════════════════
 // UPSELLS SERVER-SIDE (espelho exato do ProductModal.tsx)

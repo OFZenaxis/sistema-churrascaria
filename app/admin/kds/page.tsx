@@ -18,8 +18,8 @@ export default function KDSPage() {
 
         // Lógica do sino: toca se tem novo pedido pago
         setOrders(prev => {
-          const prevPaid = prev.filter(o => o.paymentStatus === 'PAID')
-          const newPaid = data.orders.filter((o: any) => o.paymentStatus === 'PAID')
+          const prevPaid = prev.filter(o => o.paymentStatus === 'PAID' || o.paymentMethod === 'CASH' || o.paymentMethod === 'CARD_MACHINE')
+          const newPaid = data.orders.filter((o: any) => o.paymentStatus === 'PAID' || o.paymentMethod === 'CASH' || o.paymentMethod === 'CARD_MACHINE')
           if (newPaid.length > prevPaid.length && audioRef.current) {
              audioRef.current.play().catch(() => {})
           }
@@ -93,7 +93,7 @@ export default function KDSPage() {
        {/* Kanban Board */}
        <main className="flex-1 p-6 grid grid-cols-1 md:grid-cols-3 gap-6 overflow-hidden">
           <Column title="Recebidos" color="#E31C1C">
-            {orders.filter(o => o.status === 'PENDING' && o.paymentStatus === 'PAID').map(order => (
+            {orders.filter(o => o.status === 'PENDING' && (o.paymentStatus === 'PAID' || o.paymentMethod === 'CASH' || o.paymentMethod === 'CARD_MACHINE')).map(order => (
                <OrderCard key={order.id} order={order} 
                  actionBtn="BOTA NA BRASA 🔥" actionClick={() => updateOrderStatus(order.id, 'PREPARING')} 
                  showPrintBtn />
