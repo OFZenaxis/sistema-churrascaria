@@ -53,9 +53,9 @@ export default function Home() {
               src="/logochurrascaria.svg" 
               alt="Logo Churrascaria Costa e Souza" 
               width={200} 
-              height={55}
+              height={80}
               priority
-              style={{ width: 'auto', height: '55px' }}
+              style={{ width: 'auto', height: '80px' }}
               className="object-contain"
             />
           </div>

@@ -4,22 +4,33 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Limpeza de cache para service worker e manifesto
-        source: '/(.*\\.js|.*\\.json)',
+        // Assets estáticos (JS, CSS, imagens, fontes) = CACHE LONGO
+        // Esses arquivos já tem hash no filename, são imutáveis
+        source: '/_next/static/:path*',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            value: 'public, max-age=31536000, immutable',
           },
         ],
       },
       {
-        // Garante que o html não fique em cache hardcore no mobile
-        source: '/(.*)',
+        // Imagens public (icons, logo)
+        source: '/icons/:path*',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            value: 'public, max-age=86400, stale-while-revalidate=604800',
+          },
+        ],
+      },
+      {
+        // HTML e APIs = Sem cache (sempre buscar versão fresca)
+        source: '/((?!_next/static|icons).*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-store, no-cache, must-revalidate',
           },
         ],
       },

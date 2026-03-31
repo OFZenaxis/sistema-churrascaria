@@ -11,7 +11,8 @@ type ProductModalProps = {
   onAddToCart: (item: { 
     product: Product, 
     optionsText: string, 
-    totalPrice: number 
+    totalPrice: number,
+    upsellIds?: string[]
   }) => void
 }
 
@@ -74,7 +75,8 @@ export default function ProductModal({ product, isOpen, onClose, onAddToCart }: 
     onAddToCart({
       product,
       optionsText: finalOptsText,
-      totalPrice
+      totalPrice,
+      upsellIds: upsells  // IDs dos extras selecionados, validados server-side
     })
   }
 

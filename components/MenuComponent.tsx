@@ -29,8 +29,10 @@ export type Product = {
 type CartItem = {
   id: string
   product: Product
+  quantity: number
   optionsText?: string
-  totalPrice: number
+  upsellIds?: string[]
+  displayPrice: number  // Apenas para exibição local, NÃO enviado ao backend
 }
 
 type PaymentMethod = 'PIX' | 'CARD' | 'CASH'
@@ -111,8 +113,8 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
   const activeProducts = products.filter(p => p.isActive !== false)
   const cuts = activeProducts.filter(p => p.type === 'CUT' || p.type === 'COMBO')
   const sides = activeProducts.filter(p => p.type === 'SIDE')
-  const cartCount = cart.length
-  const cartTotal = cart.reduce((acc, item) => acc + item.totalPrice, 0)
+  const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0)
+  const cartTotal = cart.reduce((acc, item) => acc + item.displayPrice * item.quantity, 0)
 
   // Filtro por categoria (agora baseado nos novos tipos/mix Marmita-First)
   const menuItems = activeProducts.filter(p => {
@@ -167,12 +169,14 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
     setTimeout(() => setSelectedProduct(null), 300)
   }
 
-  const handleAddToCart = (itemData: { product: Product, optionsText: string, totalPrice: number }) => {
+  const handleAddToCart = (itemData: { product: Product, optionsText: string, totalPrice: number, upsellIds?: string[] }) => {
     setCart(prev => [...prev, {
       id: Math.random().toString(36).substr(2, 9),
       product: itemData.product,
+      quantity: 1,
       optionsText: itemData.optionsText,
-      totalPrice: itemData.totalPrice
+      upsellIds: itemData.upsellIds || [],
+      displayPrice: itemData.totalPrice  // Apenas para exibição
     }])
     closeProductModal()
   }
@@ -190,9 +194,15 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
     setIsProcessing(true)
     setCheckoutError('')
 
+    // 🔒 Envia apenas IDs + quantidades. O backend calcula o preço seguro.
     const res = await submitOrder(
-      cartTotal,
       paymentMethod,
+      cart.map(i => ({
+        productId: i.product.id,
+        quantity: i.quantity,
+        optionsText: i.optionsText,
+        upsellIds: i.upsellIds,
+      })),
       paymentMethod === 'CASH' && changeFor ? parseFloat(changeFor) : undefined,
       selectedAddressId || undefined
     )
@@ -212,7 +222,12 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
     if (res.success && res.orderId) {
       setCart([])
       setIsCheckoutOpen(false)
-      router.push('/orders')
+      
+      if (paymentMethod === 'PIX' || paymentMethod === 'CARD') {
+        router.push(`/pagamento/${res.orderId}`)
+      } else {
+        router.push(`/pedido/${res.orderId}`)
+      }
     } else {
       setCheckoutError(res.error || 'Erro ao processar pedido.')
     }
@@ -342,7 +357,7 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                           <span className="text-zinc-200 font-bold block truncate leading-tight mb-0.5">{item.product.name}</span>
                           {item.optionsText && <span className="text-zinc-500 text-[11px] block pr-4 leading-snug">{item.optionsText}</span>}
                         </div>
-                        <span className="text-[#E31C1C] font-black whitespace-nowrap pt-0.5">R$ {item.totalPrice.toFixed(2)}</span>
+                        <span className="text-[#E31C1C] font-black whitespace-nowrap pt-0.5">R$ {(item.displayPrice * item.quantity).toFixed(2)}</span>
                       </div>
                     ))}
                   </div>

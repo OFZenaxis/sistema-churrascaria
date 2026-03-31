@@ -6,22 +6,44 @@ import { getSessionUser } from './auth'
 
 type PaymentMethod = 'PIX' | 'CARD' | 'CASH'
 
+// ══════════════════════════════════════════════════════════════════
+// UPSELLS SERVER-SIDE (espelho exato do ProductModal.tsx)
+// O frontend envia apenas os IDs; os preços são calculados AQUI.
+// ══════════════════════════════════════════════════════════════════
+const SERVER_UPSELLS: Record<string, { name: string; price: number }> = {
+  u1: { name: 'Carne Assada Extra', price: 10.0 },
+  u2: { name: 'Linguiça Toscana Extra', price: 4.0 },
+  u3: { name: 'Ovo Frito', price: 3.0 },
+}
+
+type CartItemInput = {
+  productId: string
+  quantity: number
+  optionsText?: string
+  upsellIds?: string[]
+}
+
 export async function submitOrder(
-  totalAmount: number,
   paymentMethod: PaymentMethod,
+  cartItems: CartItemInput[],
   changeFor?: number,
   addressId?: string
 ) {
   try {
-    const user = await getSessionUser()
+    const user: any = await getSessionUser()
 
     if (!user) {
       return { success: false, requiresAuth: true }
     }
 
-    // Resolve o endereço escolhido (ou o default do usuário)
+    // ── Validate cart is not empty ──
+    if (!cartItems || cartItems.length === 0) {
+      return { success: false, error: 'Carrinho vazio.' }
+    }
+
+    // ── Resolve address ──
     const targetAddressId = addressId
-      || user.addresses.find(a => a.isDefault)?.id
+      || user.addresses.find((a: any) => a.isDefault)?.id
       || user.addresses[0]?.id
 
     if (!targetAddressId) {
@@ -36,7 +58,65 @@ export async function submitOrder(
       return { success: false, error: 'Endereço não encontrado.' }
     }
 
-    // Monta string formatada para exibição na cozinha/motoboy
+    // ══════════════════════════════════════════════════════════════
+    // 🔒 CÁLCULO DE PREÇO SERVER-SIDE (a "Trava do Dinheiro")
+    // ══════════════════════════════════════════════════════════════
+
+    // 1. Buscar TODOS os preços reais do banco de dados
+    const productIds = [...new Set(cartItems.map(i => i.productId))]
+    const dbProducts = await prisma.product.findMany({
+      where: { id: { in: productIds }, isActive: true },
+      select: { id: true, price: true, name: true }
+    })
+
+    // 2. Criar index para lookup rápido
+    const priceMap = new Map(dbProducts.map(p => [p.id, p]))
+
+    // 3. Validar que todos os produtos existem e calcular total
+    let serverTotal = 0
+    const validatedItems: {
+      productId: string
+      quantity: number
+      unitPrice: number
+      comboSides: string | null
+    }[] = []
+
+    for (const item of cartItems) {
+      const dbProduct = priceMap.get(item.productId)
+      if (!dbProduct) {
+        return { success: false, error: `Produto não encontrado ou indisponível.` }
+      }
+
+      if (item.quantity < 1 || item.quantity > 50) {
+        return { success: false, error: 'Quantidade inválida.' }
+      }
+
+      // Calcular preço unitário: preço base + upsells
+      let unitPrice = dbProduct.price
+
+      if (item.upsellIds && item.upsellIds.length > 0) {
+        for (const upsellId of item.upsellIds) {
+          const upsell = SERVER_UPSELLS[upsellId]
+          if (upsell) {
+            unitPrice += upsell.price
+          }
+          // IDs inválidos são silenciosamente ignorados (segurança)
+        }
+      }
+
+      serverTotal += unitPrice * item.quantity
+
+      validatedItems.push({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice,
+        comboSides: item.optionsText || null,
+      })
+    }
+
+    // ══════════════════════════════════════════════════════════════
+
+    // ── Monta endereço formatado ── 
     const deliveryAddressStr = [
       `${address.rua}, ${address.numero}`,
       address.complemento,
@@ -63,7 +143,6 @@ export async function submitOrder(
             lng = lon
             lat = lati
 
-            // Salva no cache do Address
             await prisma.address.update({
               where: { id: address.id },
               data: { lat, lng }
@@ -72,19 +151,19 @@ export async function submitOrder(
         }
       } catch (err) {
         console.error("Geocoding failed", err)
-        // Não bloqueia o pedido
       }
     }
 
     const zone = await prisma.deliveryZone.findFirst()
 
+    // ── Criar pedido com preço SERVER-SIDE ──
     const order = await prisma.order.create({
       data: {
         userId: user.id,
         customerName: user.name,
         customerPhone: user.phone,
         status: OrderStatus.PENDING,
-        totalAmount,
+        totalAmount: serverTotal, // 🔒 Calculado pelo servidor, NUNCA pelo browser
         paymentMethod,
         changeFor: paymentMethod === 'CASH' ? (changeFor ?? null) : null,
         deliveryZoneId: zone?.id,
@@ -93,6 +172,9 @@ export async function submitOrder(
         addressId: address.id,
         customerLat: lat,
         customerLng: lng,
+        items: {
+          create: validatedItems
+        }
       }
     })
 
