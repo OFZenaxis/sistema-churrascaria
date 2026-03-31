@@ -13,6 +13,8 @@ model User {
   name      String
   phone     String   @unique
   address   String?
+  lat       Float?   // Cache geocoding latitude
+  lng       Float?   // Cache geocoding longitude
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
@@ -41,6 +43,9 @@ model Product {
   type        ProductType
   imageUrl    String?
   
+  // Controle de estoques/cardápio
+  isActive    Boolean   @default(true)
+
   // For combos: how many sides are allowed?
   maxSides    Int?      @default(0)
 
@@ -70,7 +75,8 @@ model Order {
   
   status                OrderStatus @default(PENDING)
   totalAmount           Float
-  paymentMethod         String?
+  paymentMethod         String?     // 'PIX' | 'CARD' | 'CASH'
+  changeFor             Float?      // Troco para X (apenas se CASH)
   paymentStatus         String?     // e.g., 'APPROVED', 'PENDING'
 
   // The differential feature requested by the user
@@ -78,6 +84,8 @@ model Order {
 
   driverLat             Float?      // GPS Latitude do motoboy
   driverLng             Float?      // GPS Longitude do motoboy
+  customerLat           Float?      // GPS Latitude do destino
+  customerLng           Float?      // GPS Longitude do destino
 
   deliveryZoneId        String?
   deliveryZone          DeliveryZone? @relation(fields: [deliveryZoneId], references: [id])
@@ -134,4 +142,10 @@ model Delivery {
   
   dispatchedAt DateTime @default(now())
   deliveredAt  DateTime?
+}
+
+// ======= STORE SETTINGS =======
+model StoreSettings {
+  id     String  @id @default("singleton")
+  isOpen Boolean @default(true)
 }

@@ -1,4 +1,29 @@
-import MenuComponent from '@/components/MenuComponent'
+import { Suspense } from 'react'
+import MenuComponent, { Product } from '@/components/MenuComponent'
+import MenuSkeleton from '@/components/MenuSkeleton'
+import { prisma } from '@/lib/prisma'
+
+async function LiveMenu() {
+  const [dbProducts, storeSettings] = await Promise.all([
+    prisma.product.findMany({ orderBy: { type: 'asc' } }),
+    prisma.storeSettings.findUnique({ where: { id: 'singleton' } })
+  ])
+
+  const products: Product[] = dbProducts.map(p => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    price: p.price,
+    type: p.type as 'CUT' | 'SIDE' | 'BEVERAGE' | 'COMBO',
+    maxSides: p.maxSides,
+    categoryId: p.categoryId,
+    isActive: p.isActive,
+  }))
+
+  const isStoreOpen = storeSettings?.isOpen ?? true
+
+  return <MenuComponent products={products} isStoreOpen={isStoreOpen} />
+}
 
 export default function Home() {
   return (
@@ -17,7 +42,9 @@ export default function Home() {
       </section>
 
       <section>
-        <MenuComponent />
+        <Suspense fallback={<MenuSkeleton />}>
+          <LiveMenu />
+        </Suspense>
       </section>
     </div>
   )

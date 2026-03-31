@@ -38,7 +38,11 @@ export default async function MotoboyPage() {
       distance,
       payout: order.deliveryZone?.fee || 5.0,
       status: order.status === OrderStatus.READY_FOR_PICKUP ? 'AVAILABLE' : 'DISPATCHED',
-      timeElapsed: calculateElapsed(order.createdAt)
+      timeElapsed: calculateElapsed(order.createdAt),
+      customerLat: order.customerLat,
+      customerLng: order.customerLng,
+      customerPhone: order.customerPhone,
+      customerName: order.customerName,
     }
   })
 
