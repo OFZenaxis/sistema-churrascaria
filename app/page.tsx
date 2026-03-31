@@ -1,4 +1,5 @@
 import { Suspense } from 'react'
+import Image from 'next/image'
 import MenuComponent, { Product } from '@/components/MenuComponent'
 import MenuSkeleton from '@/components/MenuSkeleton'
 import { prisma } from '@/lib/prisma'
@@ -18,6 +19,7 @@ async function LiveMenu() {
     maxSides: p.maxSides,
     categoryId: p.categoryId,
     isActive: p.isActive,
+    imageUrl: p.imageUrl,
   }))
 
   const isStoreOpen = storeSettings?.isOpen ?? true
@@ -27,25 +29,52 @@ async function LiveMenu() {
 
 export default function Home() {
   return (
-    <div className="space-y-12">
-      <section className="text-center py-16 bg-gradient-to-b from-[#111] to-[#0a0a0a] rounded-3xl border border-zinc-800 shadow-xl overflow-hidden relative">
-        <div className="absolute inset-0 bg-orange-900/10 blur-3xl rounded-full translate-y-12" />
-        
-        <div className="relative z-10">
-          <h1 className="text-4xl md:text-6xl font-extrabold text-white tracking-tight mb-4">
-            A Experiência Premium da <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-600">Brasa</span> na Sua Casa.
-          </h1>
-          <p className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto">
-            Cortes selecionados, fogo no ponto exato e entrega com frota própria para garantir a máxima qualidade.
+    <div className="min-h-screen bg-black pb-nav">
+
+      {/* ── HERO ── */}
+      <header className="relative overflow-hidden bg-black pt-6 pb-4 px-4 text-center">
+        {/* Glow decoration */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-48 rounded-full bg-red-700/20 blur-3xl" />
+        </div>
+
+        <div className="relative z-10 max-w-xl mx-auto animate-fade-up">
+          {/* Badge institucional */}
+          <div className="inline-flex items-center gap-2 bg-[#1a1a1a] border border-[#2a2a2a] rounded-full px-4 py-1.5 mb-5">
+            <span className="text-red-500 text-xs">🔥</span>
+            <span className="text-zinc-400 text-xs font-bold uppercase tracking-widest">
+              A Pioneira do Jardim Ingá
+            </span>
+          </div>
+
+          {/* Logo */}
+          <div className="flex justify-center mb-4 mt-2">
+            <Image 
+              src="/logochurrascaria.svg" 
+              alt="Logo Churrascaria Costa e Souza" 
+              width={260} 
+              height={100}
+              priority
+              className="w-auto h-24 object-contain drop-shadow-[0_4px_16px_rgba(227,28,28,0.15)]"
+            />
+          </div>
+          <p className="text-sm text-zinc-500 font-bold uppercase tracking-[0.18em] mb-4">
+            Churrascaria · Luziânia · GO
+          </p>
+
+          <p className="text-zinc-400 text-sm leading-relaxed max-w-xs mx-auto">
+            Sabor e Tradição desde o início.<br/>
+            <span className="text-zinc-500">Carnes selecionadas direto na brasa, entregues na sua porta.</span>
           </p>
         </div>
-      </section>
+      </header>
 
-      <section>
+      {/* ── MENU ── */}
+      <main className="px-0">
         <Suspense fallback={<MenuSkeleton />}>
           <LiveMenu />
         </Suspense>
-      </section>
+      </main>
     </div>
   )
 }

@@ -1,69 +1,193 @@
 @import "tailwindcss";
 
+/* ==============================
+   CHURRASCARIA COSTA E SOUZA
+   Design System v1.0 - Elite
+   ============================== */
+
 @theme {
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+  --color-brasa: #E31C1C;
+  --color-brasa-dark: #B51515;
+  --color-brasa-light: #FF2E2E;
+  --color-card: #111111;
+  --color-surface: #0a0a0a;
 }
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 20 14.3% 4.1%;
-    --card: 0 0% 100%;
-    --card-foreground: 20 14.3% 4.1%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 20 14.3% 4.1%;
-    --primary: 24 9.8% 10%;
-    --primary-foreground: 60 9.1% 97.8%;
-    --secondary: 60 4.8% 95.9%;
-    --secondary-foreground: 24 9.8% 10%;
-    --muted: 60 4.8% 95.9%;
-    --muted-foreground: 25 5.3% 44.7%;
-    --accent: 60 4.8% 95.9%;
-    --accent-foreground: 24 9.8% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 60 9.1% 97.8%;
-    --border: 20 5.9% 90%;
-    --input: 20 5.9% 90%;
-    --ring: 24 9.8% 10%;
-    --radius: 0.5rem;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 97%;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background: #000;
+    color: #f5f5f5;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ── Scrollbar totalmente invisível ── */
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ── Safe area para notch / bottom bar ── */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+  .pb-nav {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+/* ── Animação de entrada suave ── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+  animation: fadeUp 0.35s ease both;
+}
+
+/* ── Shimmer skeleton ── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 12px;
+}
+
+/* ── Botão principal Vermelho Brasa ── */
+.btn-brasa {
+  background: #E31C1C;
+  color: #fff;
+  font-weight: 900;
+  font-size: 1.1rem;
+  letter-spacing: 0.02em;
+  border-radius: 14px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  border: none;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.btn-brasa:hover  { background: #FF2E2E; }
+.btn-brasa:active { transform: scale(0.97); background: #B51515; }
+.btn-brasa:disabled { background: #333; color: #666; pointer-events: none; }
+
+/* ── Card de produto dark ── */
+.card-product {
+  background: #111;
+  border: 1.5px solid #1f1f1f;
+  border-radius: 20px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  overflow: hidden;
+}
+.card-product:hover {
+  border-color: #E31C1C44;
+  box-shadow: 0 0 24px #E31C1C18;
+}
+
+/* ── Input escuro padrão ── */
+.input-dark {
+  background: #0a0a0a;
+  border: 1.5px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: #fff;
+  font-size: 1rem;
+  width: 100%;
+  transition: border-color 0.15s;
+  outline: none;
+  -webkit-appearance: none;
+}
+.input-dark:focus {
+  border-color: #E31C1C;
+  box-shadow: 0 0 0 3px #E31C1C22;
+}
+.input-dark::placeholder { color: #555; }
+
+/* ── Bottom Nav ── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: #0d0d0d;
+  border-top: 1px solid #1f1f1f;
+  display: flex;
+  align-items: stretch;
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ── Horizontal scroll pills ── */
+.scroll-pills {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 8px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.pill {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-radius: 99px;
+  background: transparent;
+  border: 1px solid #333;
+  color: #888;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+.pill.active, .pill:active {
+  background: #E31C1C;
+  border-color: #E31C1C;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(227, 28, 28, 0.25);
+}
+
+/* ── Selo "MAIS PEDIDO" ── */
+.badge-hot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #E31C1C;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
 }

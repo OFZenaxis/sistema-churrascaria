@@ -1,14 +1,15 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, X, ShoppingBag, Check, Loader2, Banknote, CreditCard, QrCode, Flame, MapPin } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { Plus, X, ShoppingBag, Check, Loader2, Banknote, CreditCard, QrCode, Flame, MapPin, UtensilsCrossed, ClipboardList } from 'lucide-react'
+import { useRouter, usePathname } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { submitOrder } from '../app/actions/checkout'
 import { getSessionUser } from '../app/actions/auth'
 import PhoneLogin from './PhoneLogin'
 import AddressPicker, { AddressOption } from './AddressPicker'
+import ProductCard from './ProductCard'
 
 const CustomerTracker = dynamic(() => import('./CustomerTracker'), { ssr: false })
 
@@ -21,6 +22,7 @@ export type Product = {
   maxSides?: number | null
   categoryId?: string
   isActive?: boolean
+  imageUrl?: string | null
 }
 
 type CartItem = {
@@ -39,6 +41,48 @@ const PAYMENT_OPTIONS: { id: PaymentMethod; label: string; icon: React.ReactNode
   { id: 'CASH', label: 'Dinheiro', icon: <Banknote className="w-5 h-5" /> },
 ]
 
+const CATEGORIES = ['TODOS', 'CARNES', 'COMBOS', 'ACOMPANHAMENTOS']
+
+function BottomNav({ cartCount, onCartClick }: { cartCount: number; onCartClick: () => void }) {
+  const router = useRouter()
+  const pathname = usePathname()
+
+  const tabs = [
+    { id: 'menu', label: 'Cardápio', icon: <UtensilsCrossed className="w-[22px] h-[22px]" />, path: '/' },
+    { id: 'orders', label: 'Pedidos', icon: <ClipboardList className="w-[22px] h-[22px]" />, path: '/orders' },
+    { id: 'cart', label: 'Carrinho', icon: <ShoppingBag className="w-[22px] h-[22px]" />, action: onCartClick },
+  ]
+
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 h-[68px] bg-[#0a0a0a]/85 backdrop-blur-xl border-t border-[#1f1f1f] flex items-stretch z-[100] safe-bottom">
+      {tabs.map(tab => {
+        const isActive = tab.path ? pathname === tab.path : false
+        const isCart = tab.id === 'cart'
+        return (
+          <button
+            key={tab.id}
+            onClick={tab.action || (() => tab.path && router.push(tab.path))}
+            className={`flex-1 flex flex-col items-center justify-center gap-[3px] text-[10px] font-bold tracking-wide transition-all relative ${
+              isActive ? 'text-[#E31C1C]' : isCart && cartCount > 0 ? 'text-[#E31C1C]' : 'text-zinc-500'
+            }`}
+          >
+            <span className="relative">
+              {tab.icon}
+              {isCart && cartCount > 0 && (
+                <span className="absolute -top-1.5 -right-2 bg-[#E31C1C] text-white text-[10px] font-black min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1 shadow-md shadow-red-900/40">
+                  {cartCount}
+                </span>
+              )}
+            </span>
+            <span>{tab.label}</span>
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
+// ─── Main Component ──────────────────────────────────────────────
 export default function MenuComponent({ products, isStoreOpen = true }: { products: Product[], isStoreOpen?: boolean }) {
   const router = useRouter()
 
@@ -51,12 +95,11 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
   const [cart, setCart] = useState<CartItem[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [checkoutError, setCheckoutError] = useState('')
+  const [activeCategory, setActiveCategory] = useState('TODOS')
 
-  // Estado de Pagamento
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('PIX')
   const [changeFor, setChangeFor] = useState<string>('')
 
-  // Estado de Endereços
   const [userAddresses, setUserAddresses] = useState<AddressOption[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
   const [loadingAddresses, setLoadingAddresses] = useState(false)
@@ -64,6 +107,21 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
   const activeProducts = products.filter(p => p.isActive !== false)
   const cuts = activeProducts.filter(p => p.type === 'CUT' || p.type === 'COMBO')
   const sides = activeProducts.filter(p => p.type === 'SIDE')
+  const cartCount = cart.length
+  const cartTotal = cart.reduce((acc, item) => acc + item.totalPrice, 0)
+
+  // Filtro por categoria
+  const menuItems = activeProducts.filter(p => {
+    if (activeCategory === 'TODOS') return p.type === 'CUT' || p.type === 'COMBO'
+    if (activeCategory === 'CARNES') return p.type === 'CUT'
+    if (activeCategory === 'COMBOS') return p.type === 'COMBO'
+    if (activeCategory === 'ACOMPANHAMENTOS') return p.type === 'SIDE'
+    return true
+  })
+
+  // Top 3 carnes = MAIS PEDIDO
+  const cutIds = activeProducts.filter(p => p.type === 'CUT').slice(0, 3).map(p => p.id)
+  const isHot = (id: string) => cutIds.includes(id)
 
   useEffect(() => {
     if (isModalOpen || isLoginOpen || isCheckoutOpen) {
@@ -73,16 +131,14 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
     }
   }, [isModalOpen, isLoginOpen, isCheckoutOpen])
 
-  // Carrega endereços do usuário logado quando abre o checkout
   const loadUserAddresses = async () => {
     setLoadingAddresses(true)
     try {
       const user = await getSessionUser()
-      if (user?.addresses && user.addresses.length > 0) {
+      if (user?.addresses?.length) {
         setUserAddresses(user.addresses as AddressOption[])
-        // Pré-seleciona o endereço padrão
-        const defaultAddr = user.addresses.find(a => a.isDefault) || user.addresses[0]
-        setSelectedAddressId(defaultAddr.id)
+        const def = user.addresses.find(a => a.isDefault) || user.addresses[0]
+        setSelectedAddressId(def.id)
       } else {
         setUserAddresses([])
         setSelectedAddressId(null)
@@ -111,39 +167,26 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
     if (!selectedProduct?.maxSides) return
     if (selectedSides.includes(sideId)) {
       setSelectedSides(prev => prev.filter(id => id !== sideId))
-    } else {
-      if (selectedSides.length < selectedProduct.maxSides) {
-        setSelectedSides(prev => [...prev, sideId])
-      } else {
-        alert(`Você só pode escolher até ${selectedProduct.maxSides} acompanhamentos.`)
-      }
+    } else if (selectedSides.length < selectedProduct.maxSides) {
+      setSelectedSides(prev => [...prev, sideId])
     }
   }
 
   const addToCart = () => {
     if (!selectedProduct) return
     if ((selectedProduct.type === 'CUT' || selectedProduct.type === 'COMBO') && !doneness) {
-      alert('Por favor, selecione o ponto da carne obrigatoriamente!')
+      alert('Selecione o ponto da carne!')
       return
     }
-    if (selectedProduct.type === 'COMBO' && selectedSides.length === 0) {
-      alert('Por favor, selecione ao menos um acompanhamento!')
-      return
-    }
-
-    const newItem: CartItem = {
+    setCart(prev => [...prev, {
       id: Math.random().toString(36).substr(2, 9),
       product: selectedProduct,
-      doneness: doneness,
+      doneness,
       sides: selectedSides,
       totalPrice: selectedProduct.price
-    }
-
-    setCart(prev => [...prev, newItem])
+    }])
     closeProductModal()
   }
-
-  const cartTotal = cart.reduce((acc, item) => acc + item.totalPrice, 0)
 
   const openCheckout = async () => {
     if (cart.length === 0) return
@@ -172,151 +215,82 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
       setIsLoginOpen(true)
       return
     }
-
     if ((res as any).requiresAddress) {
-      // Usuário logado mas sem endereço — abre o modal de login na etapa de endereço
       setIsCheckoutOpen(false)
       setIsLoginOpen(true)
       return
     }
-
     if (res.success && res.orderId) {
       setCart([])
       setIsCheckoutOpen(false)
       router.push('/orders')
     } else {
-      setCheckoutError(res.error || 'Oops! Ocorreu um erro ao processar o pedido.')
+      setCheckoutError(res.error || 'Erro ao processar pedido.')
     }
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 relative">
-
-      {/* Overlay Loja Fechada */}
+    <>
+      {/* ── Overlay Loja Fechada ── */}
       {!isStoreOpen && (
-        <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-black/90 backdrop-blur-lg text-center px-8">
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="flex flex-col items-center gap-6"
-          >
-            <div className="w-24 h-24 rounded-full bg-zinc-900 border border-zinc-700 flex items-center justify-center">
-              <Flame className="w-12 h-12 text-zinc-600" />
+        <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-black/95 text-center px-8">
+          <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col items-center gap-5">
+            <div className="w-20 h-20 rounded-full bg-[#111] border border-[#222] flex items-center justify-center">
+              <Flame className="w-10 h-10 text-[#333]" />
             </div>
-            <div>
-              <h2 className="text-4xl font-black text-white mb-3">Brasa Descansando...</h2>
-              <p className="text-zinc-400 text-lg max-w-sm">Nossa grelha está de folga no momento. Voltamos em breve com tudo na brasa!</p>
-            </div>
-            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl px-6 py-3">
-              <p className="text-zinc-500 font-bold text-sm">Loja fechada no momento</p>
+            <h2 className="text-3xl font-black text-white uppercase">Brasa Descansando</h2>
+            <p className="text-zinc-500 text-sm max-w-xs">Nossa grelha está de folga. Voltamos em breve!</p>
+            <div className="bg-[#111] border border-[#222] rounded-2xl px-5 py-2.5">
+              <p className="text-zinc-600 font-bold text-xs uppercase tracking-wider">Loja fechada no momento</p>
             </div>
           </motion.div>
         </div>
       )}
 
-      {/* Esquerda: Menu principal */}
-      <div className="lg:col-span-2 pb-32 lg:pb-0">
-        <h2 className="text-3xl font-black mb-8 text-white tracking-tight">Especialidades da Casa</h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {cuts.map(product => (
-            <div
-              key={product.id}
-              className={`bg-[#111] rounded-3xl border border-zinc-800 p-6 flex flex-col justify-between h-full transition-all duration-300 group ${isStoreOpen ? 'cursor-pointer hover:border-orange-500/50 hover:shadow-2xl hover:shadow-orange-900/10' : 'opacity-60 cursor-not-allowed'}`}
-              onClick={() => openProductModal(product)}
-            >
-              <div>
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-black text-2xl text-zinc-100">{product.name}</h3>
-                </div>
-                <p className="text-sm text-zinc-400 line-clamp-2">{product.description}</p>
-              </div>
-
-              <div className="mt-8 flex items-end justify-between">
-                <span className="font-black text-orange-400 text-2xl">R$ {product.price.toFixed(2)}</span>
-                <span className={`font-bold flex items-center text-sm border px-4 py-2 rounded-full transition-colors ${isStoreOpen ? 'text-orange-500 border-orange-500/30 bg-orange-500/10 group-hover:bg-orange-500 group-hover:text-white' : 'text-zinc-600 border-zinc-700 bg-zinc-900'}`}>
-                  <Plus className="w-5 h-5 mr-1" /> Montar
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Direita: Carrinho Desktop */}
-      <div className="hidden lg:block relative">
-        <div className="bg-[#111] p-6 rounded-3xl border border-zinc-800 shadow-xl sticky top-24 max-h-[calc(100vh-8rem)] flex flex-col">
-          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-zinc-800">
-            <div className="bg-orange-500/20 p-3 rounded-xl text-orange-500">
-              <ShoppingBag className="w-6 h-6" />
-            </div>
-            <h3 className="text-2xl font-black text-white">Seu Pedido</h3>
-          </div>
-
-          <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-            {cart.length === 0 ? (
-              <div className="text-center py-12 px-4">
-                <p className="text-emerald-500/50 mb-4 flex justify-center"><ShoppingBag className="w-16 h-16" /></p>
-                <p className="text-zinc-500 text-lg">Sua sacola está vazia.</p>
-                <p className="text-zinc-600 text-sm mt-2">Escolha seu prato para começar.</p>
-              </div>
-            ) : (
-              cart.map((item, idx) => (
-                <div key={idx} className="bg-[#0a0a0a] p-4 rounded-2xl border border-zinc-800 hover:border-zinc-700 transition-colors">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-bold text-zinc-100 pr-2">{item.product.name}</span>
-                    <span className="font-black text-orange-400 whitespace-nowrap">R$ {item.totalPrice.toFixed(2)}</span>
-                  </div>
-                  {item.doneness && <p className="text-xs text-zinc-400 font-medium">Ponto: <span className="text-zinc-300">{item.doneness.replace(/_/g, ' ')}</span></p>}
-                  {item.sides.length > 0 && (
-                    <p className="text-xs text-zinc-400 mt-1.5 font-medium">Acomp: <span className="text-zinc-300">{item.sides.map(s => activeProducts.find(p => p.id === s)?.name).join(', ')}</span></p>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="pt-6 mt-4 border-t border-zinc-800">
-            <div className="flex justify-between items-center mb-6">
-              <span className="text-zinc-400 font-bold">Total</span>
-              <span className="text-3xl font-black text-white">R$ {cartTotal.toFixed(2)}</span>
-            </div>
-            <button
-              onClick={openCheckout}
-              disabled={cart.length === 0 || isProcessing || !isStoreOpen}
-              className="w-full bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-black text-xl py-5 rounded-2xl shadow-xl shadow-orange-900/40 transition-all flex justify-center items-center active:scale-[0.98]"
-            >
-              Finalizar Pedido
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Botão Sticky Mobile */}
-      <AnimatePresence>
-        {cart.length > 0 && (
-          <motion.div
-            initial={{ y: 150 }}
-            animate={{ y: 0 }}
-            exit={{ y: 150 }}
-            className="lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#050505] via-[#0a0a0a]/95 to-transparent z-40 pb-6"
+      {/* ── PILLS de Categoria ── */}
+      <div className="scroll-pills pt-2 pb-1">
+        {CATEGORIES.map(cat => (
+          <button
+            key={cat}
+            className={`pill ${activeCategory === cat ? 'active' : ''}`}
+            onClick={() => setActiveCategory(cat)}
           >
-            <button
-              onClick={openCheckout}
-              disabled={isProcessing}
-              className="w-full bg-orange-600 active:bg-orange-700 text-white font-black text-lg py-5 px-6 rounded-2xl shadow-[0_0_40px_rgba(234,88,12,0.3)] flex justify-between items-center active:scale-[0.98] transition-transform"
-            >
-              <div className="flex items-center gap-3">
-                <div className="bg-orange-500/30 p-2 rounded-full"><ShoppingBag className="w-5 h-5 text-zinc-100" /></div>
-                <span>{cart.length} itens</span>
-              </div>
-              <span className="text-xl">Finalizar R$ {cartTotal.toFixed(2)}</span>
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {cat === 'CARNES' ? '🥩 ' : cat === 'COMBOS' ? '🎁 ' : cat === 'ACOMPANHAMENTOS' ? '🍟 ' : ''}
+            {cat}
+          </button>
+        ))}
+      </div>
 
-      {/* Phone Auth Modal */}
+      {/* ── TÍTULO da seção ── */}
+      <div className="px-4 pt-4 pb-2">
+        <h2 className="text-lg font-black text-white uppercase tracking-tight">
+          {activeCategory === 'TODOS' ? 'CARNES NA BRASA' : activeCategory}
+        </h2>
+        <p className="text-zinc-600 text-xs mt-0.5">{menuItems.length} opções disponíveis</p>
+      </div>
+
+      {/* ── GRID de Produtos (iFood Style) ── */}
+      <div className="px-4 pb-8 grid grid-cols-1 gap-3">
+        {menuItems.map((product, idx) => (
+          <ProductCard 
+            key={product.id}
+            product={product}
+            isHot={isHot(product.id)}
+            isStoreOpen={isStoreOpen}
+            onClick={() => openProductModal(product)}
+            idx={idx}
+          />
+        ))}
+
+        {menuItems.length === 0 && (
+          <div className="text-center py-12 text-zinc-600">
+            <p className="text-4xl mb-3">🔍</p>
+            <p className="font-bold">Nenhum item nesta categoria</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Phone Auth Modal ── */}
       <PhoneLogin
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
@@ -327,73 +301,81 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
         }}
       />
 
-      {/* Modal de Checkout */}
+      {/* ── CHECKOUT MODAL ── */}
       <AnimatePresence>
         {isCheckoutOpen && (
           <motion.div
-            className="fixed inset-0 z-[200] flex items-end lg:items-center justify-center bg-black/85 backdrop-blur-md p-0 lg:p-4"
+            className="fixed inset-0 z-[200] flex items-end justify-center bg-black/90"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
             <motion.div
-              className="bg-[#111] w-full max-w-md rounded-t-[2rem] lg:rounded-[2rem] border-t lg:border border-zinc-800 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+              className="bg-[#0d0d0d] w-full max-w-lg rounded-t-[28px] border-t border-[#1f1f1f] shadow-2xl flex flex-col max-h-[92vh]"
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 220 }}
             >
-              <div className="p-6 border-b border-zinc-800 bg-zinc-900/60 flex justify-between items-center shrink-0">
-                <h3 className="text-2xl font-black text-white">Finalizar Pedido</h3>
-                <button onClick={() => setIsCheckoutOpen(false)} className="text-zinc-500 hover:text-white p-2 rounded-full bg-zinc-900 border border-zinc-800">
-                  <X className="w-5 h-5" />
+              {/* Handle */}
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 bg-[#333] rounded-full" />
+              </div>
+
+              <div className="px-5 py-3 flex justify-between items-center border-b border-[#1a1a1a]">
+                <h3 className="text-xl font-black text-white uppercase tracking-tight">Seu Pedido</h3>
+                <button
+                  onClick={() => setIsCheckoutOpen(false)}
+                  className="w-9 h-9 flex items-center justify-center rounded-full bg-[#1a1a1a] text-zinc-400 hover:text-white transition-colors"
+                >
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
 
                 {/* Resumo */}
-                <div className="bg-[#0a0a0a] rounded-2xl p-4 border border-zinc-800">
-                  <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-3">Resumo</p>
+                <div className="bg-[#111] rounded-2xl p-4 border border-[#1f1f1f]">
+                  <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-3">Itens</p>
                   <div className="space-y-2">
                     {cart.map((item, i) => (
-                      <div key={i} className="flex justify-between text-sm">
-                        <span className="text-zinc-300 font-medium">{item.product.name}</span>
-                        <span className="text-orange-400 font-bold">R$ {item.totalPrice.toFixed(2)}</span>
+                      <div key={i} className="flex justify-between text-sm items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-zinc-200 font-bold block truncate">{item.product.name}</span>
+                          {item.doneness && <span className="text-zinc-600 text-xs">Ponto: {item.doneness.replace(/_/g, ' ')}</span>}
+                        </div>
+                        <span className="text-[#E31C1C] font-black whitespace-nowrap">R$ {item.totalPrice.toFixed(2)}</span>
                       </div>
                     ))}
                   </div>
-                  <div className="border-t border-zinc-800 mt-3 pt-3 flex justify-between">
-                    <span className="font-black text-white">Total</span>
-                    <span className="font-black text-orange-400 text-xl">R$ {cartTotal.toFixed(2)}</span>
+                  <div className="border-t border-[#1f1f1f] mt-3 pt-3 flex justify-between items-center">
+                    <span className="font-black text-white text-sm">TOTAL</span>
+                    <span className="font-black text-[#E31C1C] text-2xl">R$ {cartTotal.toFixed(2)}</span>
                   </div>
                 </div>
 
-                {/* ====== SELEÇÃO DE ENDEREÇO ====== */}
+                {/* Endereço */}
                 {loadingAddresses ? (
-                  <div className="flex items-center justify-center gap-3 py-6 text-zinc-500">
-                    <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
-                    <span className="font-medium text-sm">Carregando endereços...</span>
+                  <div className="flex items-center gap-3 py-4 text-zinc-600">
+                    <Loader2 className="w-5 h-5 animate-spin text-[#E31C1C]" />
+                    <span className="text-sm font-medium">Carregando endereços...</span>
                   </div>
                 ) : userAddresses.length > 0 ? (
                   <AddressPicker
                     addresses={userAddresses}
                     selectedId={selectedAddressId}
                     onSelect={setSelectedAddressId}
-                    onAddNew={() => {
-                      setIsCheckoutOpen(false)
-                      setIsLoginOpen(true)
-                    }}
+                    onAddNew={() => { setIsCheckoutOpen(false); setIsLoginOpen(true) }}
                   />
                 ) : (
-                  <div className="bg-orange-500/5 border border-orange-500/20 rounded-2xl p-4 flex items-center gap-3">
-                    <MapPin className="w-5 h-5 text-orange-400 shrink-0" />
+                  <div className="bg-[#E31C1C]/5 border border-[#E31C1C]/20 rounded-2xl p-4 flex items-center gap-3">
+                    <MapPin className="w-5 h-5 text-[#E31C1C] shrink-0" />
                     <div>
-                      <p className="text-orange-300 font-bold text-sm">Nenhum endereço cadastrado</p>
+                      <p className="text-red-300 font-bold text-sm">Nenhum endereço cadastrado</p>
                       <button
                         type="button"
                         onClick={() => { setIsCheckoutOpen(false); setIsLoginOpen(true) }}
-                        className="text-orange-400 text-xs underline mt-0.5 hover:text-orange-300"
+                        className="text-[#E31C1C] text-xs underline mt-0.5"
                       >
                         Cadastrar agora →
                       </button>
@@ -401,19 +383,19 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                   </div>
                 )}
 
-                {/* Forma de Pagamento */}
+                {/* Pagamento */}
                 <div>
-                  <p className="text-zinc-400 text-xs font-black uppercase tracking-widest mb-3">Forma de Pagamento</p>
-                  <div className="grid grid-cols-3 gap-3">
+                  <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-3">Forma de Pagamento</p>
+                  <div className="grid grid-cols-3 gap-2">
                     {PAYMENT_OPTIONS.map(opt => (
                       <button
                         key={opt.id}
                         type="button"
                         onClick={() => setPaymentMethod(opt.id)}
-                        className={`flex flex-col items-center gap-2 py-4 px-2 rounded-2xl border-2 transition-all font-bold text-sm ${
+                        className={`flex flex-col items-center gap-2 py-4 rounded-2xl border-2 transition-all font-black text-xs uppercase min-h-[72px] ${
                           paymentMethod === opt.id
-                            ? 'border-orange-500 bg-orange-500/10 text-orange-400'
-                            : 'border-zinc-800 bg-[#0a0a0a] text-zinc-500 hover:border-zinc-700'
+                            ? 'border-[#E31C1C] bg-[#E31C1C]/10 text-[#E31C1C]'
+                            : 'border-[#1f1f1f] bg-[#111] text-zinc-600 hover:border-[#2a2a2a]'
                         }`}
                       >
                         {opt.icon}
@@ -423,7 +405,7 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                   </div>
                 </div>
 
-                {/* Campo de Troco */}
+                {/* Troco */}
                 <AnimatePresence>
                   {paymentMethod === 'CASH' && (
                     <motion.div
@@ -432,19 +414,20 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                       exit={{ opacity: 0, height: 0 }}
                       className="overflow-hidden"
                     >
-                      <label className="text-xs font-black text-zinc-500 uppercase tracking-widest mb-2 block">
-                        Troco para quanto? <span className="text-zinc-600 normal-case font-medium">(opcional)</span>
+                      <label className="text-zinc-600 text-[10px] font-black uppercase tracking-widest mb-2 block">
+                        Troco para quanto? <span className="text-zinc-700 normal-case font-medium">(opcional)</span>
                       </label>
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 font-bold">R$</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 font-bold text-sm">R$</span>
                         <input
                           type="number"
+                          inputMode="decimal"
                           min={cartTotal}
                           step="0.01"
                           value={changeFor}
                           onChange={e => setChangeFor(e.target.value)}
                           placeholder={`Mínimo R$ ${cartTotal.toFixed(2)}`}
-                          className="w-full bg-[#0a0a0a] border border-zinc-800 rounded-2xl pl-12 pr-5 py-4 text-white font-bold focus:border-orange-500 focus:outline-none transition-all"
+                          className="input-dark pl-12 min-h-[52px]"
                         />
                       </div>
                     </motion.div>
@@ -452,26 +435,27 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                 </AnimatePresence>
 
                 {checkoutError && (
-                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-rose-500 text-sm font-bold text-center bg-rose-500/10 border border-rose-500/30 p-3 rounded-xl">
+                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-red-400 text-sm font-bold text-center bg-red-950/40 border border-red-900/40 p-3 rounded-xl">
                     {checkoutError}
                   </motion.p>
                 )}
               </div>
 
-              <div className="p-6 border-t border-zinc-800 pb-8 lg:pb-6 shrink-0">
+              {/* CTA */}
+              <div className="px-5 pb-8 pt-4 border-t border-[#1a1a1a] safe-bottom">
                 <button
                   onClick={handleConfirmOrder}
-                  disabled={isProcessing || (!selectedAddressId && userAddresses.length > 0) || userAddresses.length === 0}
-                  className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-60 active:scale-[0.98] transition-all text-white font-black text-xl py-5 rounded-2xl shadow-xl shadow-orange-900/40 flex justify-center items-center gap-2"
+                  disabled={isProcessing || userAddresses.length === 0}
+                  className="btn-brasa w-full text-base"
                 >
                   {isProcessing ? (
-                    <><Loader2 className="w-6 h-6 animate-spin" /> Processando...</>
+                    <><Loader2 className="w-5 h-5 animate-spin" /> PROCESSANDO...</>
                   ) : (
-                    `Confirmar Pedido — R$ ${cartTotal.toFixed(2)}`
+                    `🔥 GARANTIR MEU CHURRASCO — R$ ${cartTotal.toFixed(2)}`
                   )}
                 </button>
                 {userAddresses.length === 0 && (
-                  <p className="text-center text-zinc-600 text-xs mt-3">Cadastre um endereço para confirmar o pedido</p>
+                  <p className="text-center text-zinc-700 text-xs mt-2">Cadastre um endereço para continuar</p>
                 )}
               </div>
             </motion.div>
@@ -479,45 +463,49 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
         )}
       </AnimatePresence>
 
-      {/* Modal Premium Ponto e Acompanhamentos */}
+      {/* ── MODAL Ponto da Carne ── */}
       <AnimatePresence>
         {isModalOpen && selectedProduct && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-end lg:items-center justify-center bg-black/80 backdrop-blur-md p-0 lg:p-4"
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/85"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={closeProductModal}
           >
             <motion.div
-              className="bg-[#0a0a0a] lg:bg-[#111] w-full max-w-2xl rounded-t-[2rem] lg:rounded-[2rem] border-t lg:border border-zinc-800 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
-              initial={{ y: "100%" }}
+              className="bg-[#0d0d0d] w-full max-w-lg rounded-t-[28px] border-t border-[#1f1f1f] overflow-hidden flex flex-col max-h-[90vh]"
+              initial={{ y: '100%' }}
               animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              onClick={(e) => e.stopPropagation()}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 220 }}
+              onClick={e => e.stopPropagation()}
             >
-              <div className="p-6 bg-zinc-900 border-b border-zinc-800 relative">
-                <button
-                  onClick={closeProductModal}
-                  className="absolute top-6 right-6 bg-black/40 p-2 rounded-full text-zinc-400 hover:text-white transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                <div className="mt-2 pr-12">
-                  <h3 className="text-3xl font-black text-white">{selectedProduct.name}</h3>
-                  <p className="text-zinc-400 mt-2">{selectedProduct.description}</p>
-                </div>
+              <div className="flex justify-center pt-3 pb-1">
+                <div className="w-10 h-1 bg-[#333] rounded-full" />
               </div>
 
-              <div className="p-6 overflow-y-auto w-full flex-1">
+              <div className="px-5 pt-1 pb-4 border-b border-[#1a1a1a] relative">
+                <button onClick={closeProductModal} className="absolute top-1 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-[#1a1a1a] text-zinc-500 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+                {isHot(selectedProduct.id) && <div className="badge-hot mb-2">🔥 MAIS PEDIDO</div>}
+                <h3 className="text-2xl font-black text-white pr-10">{selectedProduct.name}</h3>
+                {selectedProduct.description && (
+                  <p className="text-zinc-500 text-sm mt-1">{selectedProduct.description}</p>
+                )}
+              </div>
+
+              <div className="overflow-y-auto flex-1 px-5 py-5 space-y-6">
+
+                {/* Ponto da Carne */}
                 {(selectedProduct.type === 'CUT' || selectedProduct.type === 'COMBO') && (
-                  <div className="mb-8">
-                    <div className="flex items-center gap-3 mb-5">
-                      <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 text-[10px] font-black px-2 py-1 rounded tracking-wider">OBRIGATÓRIO</span>
-                      <h4 className="text-xl font-bold text-zinc-100">O Ponto Ideal</h4>
+                  <div>
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="bg-[#E31C1C]/10 text-[#E31C1C] border border-[#E31C1C]/20 text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider">OBRIGATÓRIO</span>
+                      <h4 className="text-base font-black text-white uppercase tracking-tight">O Ponto Ideal</h4>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-2.5">
                       {[
                         { id: '1_MAL_PASSADO', label: 'Mal passado' },
                         { id: '2_PONTO_PARA_MAL', label: 'Ponto para mal' },
@@ -529,10 +517,10 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                           key={pt.id}
                           type="button"
                           onClick={() => setDoneness(pt.id)}
-                          className={`py-5 px-3 rounded-2xl border-2 transition-all font-bold text-sm shadow-sm ${
+                          className={`py-4 px-3 rounded-2xl border-2 transition-all font-bold text-sm min-h-[56px] ${
                             doneness === pt.id
-                            ? 'border-orange-500 bg-orange-500/10 text-orange-400'
-                            : 'border-zinc-800 bg-[#151515] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 hover:bg-[#1a1a1a]'
+                              ? 'border-[#E31C1C] bg-[#E31C1C]/10 text-[#E31C1C]'
+                              : 'border-[#1f1f1f] bg-[#111] text-zinc-500 hover:border-[#333] hover:text-zinc-300'
                           }`}
                         >
                           {pt.label}
@@ -542,18 +530,19 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                   </div>
                 )}
 
+                {/* Acompanhamentos do Combo */}
                 {selectedProduct.type === 'COMBO' && selectedProduct.maxSides && (
-                  <div className="mb-4">
-                    <div className="flex justify-between items-center mb-5">
-                      <div className="flex gap-3 items-center">
-                        <span className="bg-zinc-800 text-zinc-300 border border-zinc-700 text-[10px] font-black px-2 py-1 rounded tracking-wider">OPCIONAL</span>
-                        <h4 className="text-xl font-bold text-zinc-100">Complementos</h4>
+                  <div>
+                    <div className="flex justify-between items-center mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="bg-[#1a1a1a] text-zinc-400 border border-[#2a2a2a] text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider">OPCIONAL</span>
+                        <h4 className="text-base font-black text-white uppercase tracking-tight">Acompanhamentos</h4>
                       </div>
-                      <span className="text-sm font-bold bg-zinc-900 px-3 py-1 rounded-full text-zinc-400 border border-zinc-800">
-                        {selectedSides.length} / {selectedProduct.maxSides}
+                      <span className="text-xs font-bold bg-[#111] px-3 py-1 rounded-full text-zinc-500 border border-[#1f1f1f]">
+                        {selectedSides.length}/{selectedProduct.maxSides}
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-2">
                       {sides.map(side => {
                         const isSelected = selectedSides.includes(side.id)
                         const isDisabled = !isSelected && selectedSides.length >= selectedProduct.maxSides!
@@ -561,19 +550,17 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                           <div
                             key={side.id}
                             onClick={() => !isDisabled && handleSelectSide(side.id)}
-                            className={`flex items-center justify-between p-4 rounded-2xl border-2 transition-all cursor-pointer ${
-                              isSelected
-                                ? 'border-orange-500 bg-orange-500/10'
-                                : isDisabled
-                                  ? 'border-zinc-800/50 bg-[#111] opacity-40 cursor-not-allowed'
-                                  : 'border-zinc-800 bg-[#151515] hover:border-zinc-700'
+                            className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all min-h-[56px] ${
+                              isSelected ? 'border-[#E31C1C] bg-[#E31C1C]/8'
+                              : isDisabled ? 'border-[#1a1a1a] opacity-30 cursor-not-allowed'
+                              : 'border-[#1f1f1f] bg-[#111] cursor-pointer hover:border-[#2a2a2a]'
                             }`}
                           >
-                            <p className={`font-black text-lg ${isSelected ? 'text-orange-400' : 'text-zinc-200'}`}>{side.name}</p>
-                            <div className={`w-7 h-7 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${
-                              isSelected ? 'border-orange-500 bg-orange-500 text-white' : 'border-zinc-700 bg-zinc-900'
+                            <p className={`font-bold text-base ${isSelected ? 'text-[#E31C1C]' : 'text-zinc-300'}`}>{side.name}</p>
+                            <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                              isSelected ? 'border-[#E31C1C] bg-[#E31C1C]' : 'border-[#333] bg-transparent'
                             }`}>
-                              {isSelected && <Check className="w-4 h-4 font-black" />}
+                              {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
                             </div>
                           </div>
                         )
@@ -583,22 +570,22 @@ export default function MenuComponent({ products, isStoreOpen = true }: { produc
                 )}
               </div>
 
-              <div className="p-4 lg:p-6 border-t border-zinc-800 bg-[#0a0a0a] lg:bg-[#111] shrink-0 pb-8 lg:pb-6">
-                <div className="flex justify-between items-center mb-4 px-2">
-                  <span className="text-zinc-400 font-bold">Total do prato</span>
-                  <span className="text-2xl font-black text-orange-400">R$ {selectedProduct.price.toFixed(2)}</span>
+              <div className="px-5 pb-8 pt-4 border-t border-[#1a1a1a] safe-bottom">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-zinc-500 font-bold text-sm uppercase tracking-wide">Valor</span>
+                  <span className="text-[#E31C1C] font-black text-2xl">R$ {selectedProduct.price.toFixed(2)}</span>
                 </div>
-                <button
-                  onClick={addToCart}
-                  className="w-full bg-zinc-100 hover:bg-white active:scale-[0.98] transition-all text-black font-black text-xl py-5 rounded-2xl shadow-xl shadow-zinc-900/20 flex justify-center items-center gap-2"
-                >
-                  <Plus className="w-6 h-6" /> ADICIONAR À SACOLA
+                <button onClick={addToCart} className="btn-brasa w-full">
+                  <Plus className="w-5 h-5" /> ADICIONAR AO PEDIDO
                 </button>
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+
+      {/* ── BOTTOM NAV ── */}
+      <BottomNav cartCount={cartCount} onCartClick={openCheckout} />
+    </>
   )
 }
