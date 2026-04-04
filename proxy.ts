@@ -4,7 +4,8 @@ import type { NextRequest } from 'next/server'
 // Domínio base da plataforma — configurável via env para não hardcodar em todo o código
 const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
 
-export function proxy(req: NextRequest) {
+// Next.js 16.2.1+ lê proxy.ts nativamente e busca o export nomeado "middleware"
+export function middleware(req: NextRequest) {
   const url = req.nextUrl
   const pathname = url.pathname
   const hostname = req.headers.get("host") || ""

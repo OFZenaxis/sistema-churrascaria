@@ -56,6 +56,31 @@ export default async function Page({
 }
 ```
 
+### Roteamento Edge e Proxy (Next.js 16.2.1+)
+
+**É estritamente proibido criar arquivos `middleware.ts`.** O Next.js 16.2.1+ depreciou `middleware.ts` em favor de `proxy.ts`.
+
+- Toda lógica de interceptação, redirecionamento, rewrite e injeção de headers deve ficar **exclusivamente** em `proxy.ts` na raiz do projeto.
+- O arquivo `proxy.ts` deve exportar a função como `export function middleware(req: NextRequest)` e o objeto `export const config = { matcher: [...] }` — o runtime lê esses exports diretamente.
+- **Nunca crie `middleware.ts`** — se ambos existirem, o servidor crasha na inicialização.
+
+```ts
+// proxy.ts — CORRETO (Next.js 16.2.1+)
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export function middleware(req: NextRequest) {
+  // toda lógica de proxy/rewrite aqui
+  return NextResponse.next()
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+}
+
+// middleware.ts — PROIBIDO — causa crash de inicialização no Next.js 16+
+```
+
 ---
 
 ## LEI 2 — Multi-tenancy (Nunca Viole o Isolamento)

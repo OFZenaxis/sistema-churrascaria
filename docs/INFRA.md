@@ -298,7 +298,7 @@ A     *             → IP_DO_SERVIDOR_HOSTINGER
 ```
 
 O wildcard `*.saiudelivery.com.br` permite que qualquer `slug.saiudelivery.com.br`
-chegue ao servidor e seja roteado pelo middleware para o tenant correto.
+chegue ao servidor e seja roteado pelo proxy para o tenant correto.
 
 ### `next.config.ts`
 
