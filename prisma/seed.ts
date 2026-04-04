@@ -1,4 +1,4 @@
-import { PrismaClient, ProductType, SubscriptionTier, Role } from '@prisma/client'
+import { PrismaClient, SubscriptionTier, Role } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
@@ -87,36 +87,32 @@ async function main() {
   // Produtos
   await prisma.product.createMany({
     data: [
-      { 
-        name: 'Marmita Churrasco G', 
-        price: 38.0, 
-        type: ProductType.COMBO, 
-        categoryId: catMarmitas.id, 
+      {
+        name: 'Marmita Churrasco G',
+        price: 38.0,
+        categoryId: catMarmitas.id,
         storeId: storeZero.id,
         description: 'A pioneira do Jardim Ingá. Acompanha arroz, tropeiro, mandioca e mix na brasa.',
         isActive: true
       },
-      { 
-        name: 'Marmita Econômica', 
-        price: 20.0, 
-        type: ProductType.COMBO, 
-        categoryId: catMarmitas.id, 
+      {
+        name: 'Marmita Econômica',
+        price: 20.0,
+        categoryId: catMarmitas.id,
         storeId: storeZero.id,
         description: 'No precinho! Acompanha arroz, feijão tropeiro e churrasco.',
         isActive: true
       },
-      { 
-        name: 'Coca-Cola 2L', 
-        price: 15.0, 
-        type: ProductType.BEVERAGE, 
+      {
+        name: 'Coca-Cola 2L',
+        price: 15.0,
         categoryId: catBebidas.id,
         storeId: storeZero.id,
         isActive: true
       },
-      { 
-        name: 'Guaraná Lata', 
-        price: 6.0, 
-        type: ProductType.BEVERAGE, 
+      {
+        name: 'Guaraná Lata',
+        price: 6.0,
         categoryId: catBebidas.id,
         storeId: storeZero.id,
         isActive: true
