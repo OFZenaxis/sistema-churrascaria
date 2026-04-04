@@ -29,6 +29,12 @@
   padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
 }
 
+/* ── Marquee ticker (Torre de Controle /dev) ── */
+@keyframes marquee {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(-100%); }
+}
+
 /* ── Animação de entrada suave ── */
 @keyframes fadeUp {
   from {

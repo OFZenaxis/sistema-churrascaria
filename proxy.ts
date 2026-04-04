@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+// Domínio base da plataforma — configurável via env para não hardcodar em todo o código
+const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
+
 export function proxy(req: NextRequest) {
   const url = req.nextUrl
   const pathname = url.pathname
@@ -19,11 +22,12 @@ export function proxy(req: NextRequest) {
   const isAdminLoginRoute = segments.length >= 3 && segments[1] === 'admin' && segments[2] === 'login'
 
   if (isAdminRoute && !isAdminLoginRoute) {
-    // Aceita lojista_token (novo) ou admin_token (legado em migração)
-    const lojistaToken = req.cookies.get('lojista_token')?.value
-    const adminToken = req.cookies.get('admin_token')?.value
+    // 🔒 Cookie isolado por tenant: lojista_token_{storeId}
+    // No middleware não temos o storeId (UUID), então verificamos a presença de qualquer cookie
+    // do padrão lojista_token_* — a validação completa ocorre no layout do admin via HMAC.
+    const hasAdminSession = req.cookies.getAll().some(c => c.name.startsWith('lojista_token_'))
 
-    if (!lojistaToken && !adminToken) {
+    if (!hasAdminSession) {
       // Se é API, retorna 401 JSON (não redirect)
       if (pathname.startsWith('/api/')) {
         return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
@@ -42,25 +46,28 @@ export function proxy(req: NextRequest) {
   }
 
   // 4. Roteamento Multi-Tenant (Domínios e Route Groups)
-  const isRootDomain = hostname === 'saiudelivery.com.br' || hostname === 'localhost:3000' || hostname === 'localhost:3001'
+  //    — Domínio raiz: marketing site (app/(marketing))
+  //    — www.BASE_DOMAIN: alias do raiz; sem rewrite, Next.js serve marketing naturalmente
+  //    — subdomínio.BASE_DOMAIN: loja do tenant → rewrite para /subdomínio
+  //    — qualquer outro host: domínio customizado → rewrite para /host
+  const isRootDomain =
+    hostname === BASE_DOMAIN ||
+    hostname === `www.${BASE_DOMAIN}` ||  // www não é subdomínio de loja
+    hostname === 'localhost:3000' ||
+    hostname === 'localhost:3001'
 
-  if (isRootDomain && pathname === '/') {
+  if (isRootDomain) {
     // Route Groups são invisíveis — Next.js resolve app/(marketing)/page.tsx como '/' naturalmente
     return NextResponse.next()
   }
-  
-  if (isRootDomain) {
-    return NextResponse.next()
-  }
 
-  // Caso Subdomínio (.saiudelivery.com.br)
-  // Route Groups são invisíveis — app/(store)/[slug]/page.tsx responde em /[slug]
-  if (hostname.endsWith('.saiudelivery.com.br')) {
-    const subdomain = hostname.replace('.saiudelivery.com.br', '')
+  // Caso Subdomínio (*.BASE_DOMAIN) → rewrite para /{slug}
+  if (hostname.endsWith(`.${BASE_DOMAIN}`)) {
+    const subdomain = hostname.replace(`.${BASE_DOMAIN}`, '')
     return NextResponse.rewrite(new URL(`/${subdomain}${pathname}`, req.url))
   }
 
-  // Caso Domínio Customizado (Qualquer outro host)
+  // Caso Domínio Customizado (qualquer outro host)
   return NextResponse.rewrite(new URL(`/${hostname}${pathname}`, req.url))
 }
 

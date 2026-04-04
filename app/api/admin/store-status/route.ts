@@ -3,16 +3,21 @@ import { prisma } from '@/lib/prisma';
 import { headers } from 'next/headers';
 
 // FASE 3: STORE STATUS DA MASTER STORE (OU TENANT ATIVO)
+
+const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
+
 async function getActiveStore() {
   const headerList = await headers();
   const host = headerList.get('x-store-domain');
 
-  if (!host) {
-    return await prisma.store.findFirst({ orderBy: { createdAt: 'asc' } });
-  }
+  // 🔒 C-01 equivalente: sem host → retorna null em vez de buscar o primeiro store do banco
+  if (!host) return null;
 
-  const slug = host.replace('.saiudelivery.com.br', '');
-  
+  // Extrai slug para subdomínios da plataforma; mantém host inteiro para domínios customizados
+  const slug = host.endsWith(`.${BASE_DOMAIN}`)
+    ? host.replace(`.${BASE_DOMAIN}`, '')
+    : host
+
   return await prisma.store.findFirst({
     where: {
       OR: [
@@ -27,7 +32,7 @@ export async function GET(req: Request) {
   try {
     const store = await getActiveStore();
     if (!store) {
-       return NextResponse.json({ isOpen: false })
+      return NextResponse.json({ error: 'Tenant não identificado' }, { status: 401 })
     }
     return NextResponse.json({ isOpen: store.isOpen })
   } catch(e) {

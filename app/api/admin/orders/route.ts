@@ -4,13 +4,18 @@ import { headers } from 'next/headers';
 
 // FASE 3: PEDIDOS MULTI-TENANT COM MIDDLEWARE INJECTS
 
+const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
+
 async function getActiveStore() {
   const headerList = await headers();
   const host = headerList.get('x-store-domain');
 
   if (!host) return null;
 
-  const slug = host.replace('.saiudelivery.com.br', '');
+  // Extrai slug para subdomínios da plataforma; mantém host inteiro para domínios customizados
+  const slug = host.endsWith(`.${BASE_DOMAIN}`)
+    ? host.replace(`.${BASE_DOMAIN}`, '')
+    : host
 
   return await prisma.store.findFirst({
     where: {
@@ -51,7 +56,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ orders });
   } catch(e) {
-    console.error('[Admin Orders GET]', e);
+    console.error('[Admin Orders GET]', e instanceof Error ? e.message : 'Erro desconhecido');
     return NextResponse.json({ error: 'Erro ao buscar pedidos' }, { status: 500 });
   }
 }
@@ -83,7 +88,7 @@ export async function PUT(req: Request) {
      
      return NextResponse.json({ success: true });
   } catch(e) {
-     console.error('[Admin Orders PUT]', e);
+     console.error('[Admin Orders PUT]', e instanceof Error ? e.message : 'Erro desconhecido');
      return NextResponse.json({ error: 'Erro ao atualizar status' }, { status: 500 });
   }
 }
