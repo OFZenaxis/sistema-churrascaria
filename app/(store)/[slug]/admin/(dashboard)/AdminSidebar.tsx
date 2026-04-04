@@ -55,7 +55,8 @@ export default function AdminSidebar({
 
   const handleLogout = async () => {
     await logoutLojista(storeId)
-    router.push(`/${slug}/admin/login`)
+    const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
+    window.location.href = `https://${slug}.${BASE_DOMAIN}/admin/login`
   }
 
   return (

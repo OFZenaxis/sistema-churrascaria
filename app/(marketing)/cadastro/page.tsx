@@ -207,7 +207,9 @@ export default function CadastroPage() {
         phone: formData.phone,
       })
       if (result.success) {
-        router.push(`/${result.slug}/admin`)
+        const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
+        window.location.href = `https://${result.slug}.${BASE_DOMAIN}/admin`
+
       } else {
         setError(result.error)
       }

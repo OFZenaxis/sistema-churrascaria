@@ -25,8 +25,8 @@ export default function AdminLogin() {
     setIsLoading(false)
 
     if (res.success) {
-      router.push(`/${slug}/admin`)
-      router.refresh()
+      const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
+      window.location.href = `https://${slug}.${BASE_DOMAIN}/admin`
     } else {
       setError(res.error || 'Erro desconhecido')
       setPassword('')
