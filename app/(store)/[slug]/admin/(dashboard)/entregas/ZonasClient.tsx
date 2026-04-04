@@ -170,13 +170,50 @@ export default function ZonasClient({
   }
 
   // ── Raio com debounce para o mapa atualizar suavemente ao digitar ──────────
-  // O-05: debounce atualiza apenas estado local (sem requisição em flight);
-  // clearTimeout na cleanup cancela o timer antes de disparar — correto e suficiente.
   const [debouncedRadius, setDebouncedRadius] = useState(parseNum(radiusInput))
   useEffect(() => {
     const t = setTimeout(() => setDebouncedRadius(parseNum(radiusInput)), 350)
     return () => clearTimeout(t)
   }, [radiusInput])
+
+  // ── Live Preview: geocodifica assembledAddress com debounce de 1500ms ────────
+  // Dispara a Mapbox Geocoding API diretamente no client (NEXT_PUBLIC_MAPBOX_TOKEN).
+  // Requisito mínimo: logradouro + numero + cidade — evita chamadas em endereço incompleto.
+  // Flag `cancelled` previne setState após unmount ou nova digitação.
+  const [previewLoading, setPreviewLoading] = useState(false)
+  useEffect(() => {
+    if (!logradouro || !numero || !cidade) return
+
+    let cancelled = false
+    setPreviewLoading(true)
+
+    const t = setTimeout(async () => {
+      const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+      if (!token) { setPreviewLoading(false); return }
+
+      try {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(assembledAddress)}.json?access_token=${token}&limit=1&language=pt`
+        const res  = await fetch(url)
+        if (!res.ok || cancelled) return
+        const data = await res.json()
+        const feature = data.features?.[0]
+        if (feature && !cancelled) {
+          const [lng, lat] = feature.center as [number, number]
+          setCoords({ lat, lng })
+        }
+      } catch {
+        // preview silencioso — erros definitivos são tratados no save
+      } finally {
+        if (!cancelled) setPreviewLoading(false)
+      }
+    }, 1500)
+
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+      setPreviewLoading(false)
+    }
+  }, [assembledAddress]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Steps calculados (simulador + anéis do mapa) ──────────────────────────
   const simulatorSteps = useMemo(() => calcSteps(debouncedRadius), [debouncedRadius])
@@ -348,7 +385,16 @@ export default function ZonasClient({
 
           {/* Status das coordenadas */}
           <AnimatePresence mode="wait">
-            {coords ? (
+            {previewLoading ? (
+              <motion.div
+                key="geocoding"
+                initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="flex items-center gap-2.5 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5"
+              >
+                <Loader2 className="w-4 h-4 text-blue-500 shrink-0 animate-spin" />
+                <p className="text-xs font-bold text-blue-700">Geocodificando endereço...</p>
+              </motion.div>
+            ) : coords ? (
               <motion.div
                 key="confirmed"
                 initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -356,7 +402,7 @@ export default function ZonasClient({
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-emerald-800">Coordenadas confirmadas</p>
+                  <p className="text-xs font-bold text-emerald-800">Localização encontrada</p>
                   <p className="text-[11px] text-emerald-600 font-mono mt-0.5">
                     {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
                   </p>
@@ -370,7 +416,7 @@ export default function ZonasClient({
               >
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                 <p className="text-xs font-bold text-amber-800">
-                  Coordenadas não definidas — salve o endereço para geocodificar via Mapbox
+                  Preencha o endereço para visualizar o mapa de entrega
                 </p>
               </motion.div>
             )}
