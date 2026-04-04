@@ -15,7 +15,7 @@ interface MercadoPagoPaymentPayload {
   // Campos exclusivos de cartão de crédito
   token?: string
   installments?: number
-  issuer_id?: string | number
+  issuer_id?: number
 }
 
 export async function POST(req: Request) {
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
     if (token) {
       paymentBody.token = token;
       paymentBody.installments = installments || 1;
-      paymentBody.issuer_id = issuer_id;
+      paymentBody.issuer_id = issuer_id ? Number(issuer_id) : undefined;
     }
 
     // Criar requisição MP
