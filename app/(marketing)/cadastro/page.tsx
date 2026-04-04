@@ -427,12 +427,14 @@ export default function CadastroPage() {
                   </div>
                 </div>
 
-                {/* URL preview */}
+                {/* URL preview — formato subdomínio SaaS: slug.saiudelivery.com.br */}
                 <div className="mt-2.5 bg-slate-50/80 border border-slate-200/60 rounded-lg py-2.5 px-3.5 flex items-center overflow-hidden gap-1">
                   <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  <span className="text-slate-400 font-medium text-xs shrink-0">saiudelivery.com.br/</span>
                   <span className={`font-bold text-xs truncate ${formData.slug ? 'text-emerald-600' : 'text-slate-300'}`}>
                     {formData.slug || 'pizzaria-do-joao'}
+                  </span>
+                  <span className="text-slate-400 font-medium text-xs shrink-0">
+                    .{process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'}
                   </span>
                 </div>
 
