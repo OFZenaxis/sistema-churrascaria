@@ -1,1 +1,331 @@
-@AGENTS.md
+# CLAUDE.md — Regras para o Sistema SaaS de Delivery
+
+Você está trabalhando em uma plataforma SaaS multi-tenant de delivery para restaurantes brasileiros. Leia estas regras antes de escrever qualquer linha de código. Elas foram extraídas da arquitetura real do repositório — não são preferências genéricas.
+
+---
+
+## LEI 0 — Documentação Obrigatória
+
+**Sempre atualize `docs/BUG_TRACKER.md`, `docs/PROJECT_MAP.md` e `docs/ROADMAP.md` ao:**
+- Concluir grandes implementações (nova feature, refactor significativo)
+- Encontrar bugs ou dívidas técnicas — registrar no BUG_TRACKER antes de corrigir
+- Instalar novas dependências ou alterar a arquitetura
+- Adicionar variáveis de ambiente — registrar em `docs/INFRA.md`
+
+Estes documentos são a memória oficial do projeto. Mantê-los é tão importante quanto o código.
+
+---
+
+## LEI 1 — Arquitetura Next.js (App Router)
+
+### Server Components por padrão
+- Todo arquivo `page.tsx` e `layout.tsx` é Server Component por padrão. Não adicione `"use client"` a menos que seja estritamente necessário.
+- Um componente precisa de `"use client"` **apenas** se usa: `useState`, `useEffect`, `useRef`, `useRouter`, `useSearchParams`, event handlers (`onClick`, `onChange`), ou APIs do browser (`window`, `document`, `navigator`).
+- Se um componente apenas renderiza JSX com dados, é Server Component.
+
+### Separação de responsabilidades
+- `page.tsx` → Server Component: busca dados no Prisma, valida sessão, passa dados como props
+- `*Client.tsx` → Client Component: toda interatividade
+- Nunca faça fetch de dados no cliente quando o servidor pode fazer
+- Nunca exponha dados sensíveis (tokens, hashes, senhas) em props de Client Components
+
+### `useSearchParams` exige `<Suspense>`
+- Todo componente que usa `useSearchParams()` (Client Component) **deve** estar envolto em `<Suspense>` no Server Component pai. Sem isso o build do Next.js quebra.
+
+```tsx
+// CORRETO
+import { Suspense } from 'react'
+<Suspense><DashboardFilter /></Suspense>
+
+// ERRADO — build quebra
+<DashboardFilter />
+```
+
+### `searchParams` e `params` são Promises no App Router
+- Em `page.tsx` e `layout.tsx`, sempre faça `await params` e `await searchParams`:
+```tsx
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ period?: string }>
+}) {
+  const { slug } = await params
+  const sp = await searchParams
+}
+```
+
+---
+
+## LEI 2 — Multi-tenancy (Nunca Viole o Isolamento)
+
+### Sempre use `tenantWhere`
+```ts
+import { tenantWhere } from '@/lib/tenant'
+
+// CORRETO
+prisma.store.findFirst({ where: tenantWhere(slug) })
+
+// ERRADO — não suporta customDomain
+prisma.store.findFirst({ where: { slug } })
+```
+
+### Toda query Prisma filtra por `storeId`
+- Nunca busque dados sem filtrar pelo `storeId` do tenant resolvido
+- Sempre valide que o recurso acessado pertence à loja do tenant atual:
+```ts
+const order = await prisma.order.findFirst({ where: { id, storeId: store.id } })
+if (!order) notFound()
+```
+
+### Cookies de sessão isolados
+- Cookie do cliente: `session_token_${storeId}`
+- Cookie do admin: `admin_session_${storeId}`
+- Nunca use um cookie genérico sem o `storeId` no nome
+
+---
+
+## LEI 3 — Prisma e Banco de Dados
+
+### Use `select` explícito, não `include` por padrão
+```ts
+// CORRETO — traz apenas o necessário
+prisma.store.findFirst({
+  where: tenantWhere(slug),
+  select: { id: true, name: true, brandColor: true }
+})
+
+// EVITAR — traz todas as colunas desnecessariamente
+prisma.store.findFirst({ where: tenantWhere(slug) })
+```
+
+### Paralelize queries independentes
+```ts
+// CORRETO
+const [orders, products] = await Promise.all([
+  prisma.order.findMany(...),
+  prisma.product.findMany(...)
+])
+
+// ERRADO — sequencial sem necessidade
+const orders = await prisma.order.findMany(...)
+const products = await prisma.product.findMany(...)
+```
+
+### Sem N+1
+- Nunca faça query dentro de `.map()` ou loop
+- Use `include`/`select` com relações quando precisar de dados aninhados
+- Para agregações, use `groupBy` com `_sum`/`_count` em vez de carregar tudo em memória
+
+### Transações para operações atômicas
+```ts
+await prisma.$transaction([
+  prisma.store.create({ data: storeData }),
+  prisma.user.create({ data: userData })
+])
+```
+
+---
+
+## LEI 4 — Autenticação e Segurança
+
+### HMAC para cookies — nunca JWT externo
+```ts
+import { signPayload, verifyPayload } from '@/lib/session'
+// Nunca use jwt.sign() ou bibliotecas externas de JWT
+```
+
+### Server Actions para mutações
+- Toda mutação de banco de dados deve ser uma Server Action em `app/actions/`
+- Nunca exponha endpoints REST para mutações que poderiam ser Server Actions
+- Toda Server Action admin deve verificar sessão no início:
+```ts
+const session = await getLojistaSession(storeId)
+if (!session || session.storeId !== storeId) return { error: 'Não autorizado' }
+```
+
+### Dados sensíveis nunca saem do servidor
+- `mpAccessToken`, `password`, hashes, `COOKIE_SECRET` → apenas server-side
+- `mpPublicKey`, `NEXT_PUBLIC_*` → podem ir ao client
+
+---
+
+## LEI 5 — Estilo Visual (Tailwind + Tema)
+
+### `StoreTheme` é a única fonte de verdade de cores
+- Zero cores hardcoded em componentes B2C. Sempre use tokens do tema:
+```tsx
+// CORRETO
+<div style={{ background: phoneCard, color: phoneText }}>
+<button style={{ backgroundColor: brandColor }}>
+
+// ERRADO
+<div className="bg-white text-gray-900">
+<button className="bg-emerald-600">
+```
+
+### Props de tema em todos os componentes B2C
+```tsx
+export default function ProductCard({
+  storeTheme,
+}: {
+  storeTheme?: StoreTheme
+}) {
+  const { brandColor, phoneCard, phoneText, phoneSubText } = storeTheme ?? DEFAULT_THEME
+}
+```
+
+### Admin usa classes Tailwind fixas (não `storeTheme`)
+- O painel admin usa design system fixo (`slate-*`, `emerald-*`)
+- Não injete `storeTheme` em componentes admin
+
+### Padrões visuais do admin
+- Cards: `bg-white rounded-3xl border border-slate-100 shadow-sm p-6 md:p-8`
+- Títulos: `text-lg font-black text-slate-900 tracking-tight`
+- Labels sutis: `text-xs font-bold text-slate-400 uppercase tracking-widest`
+- Hover em linhas de tabela: `hover:bg-slate-50/50 transition-colors`
+- Badges de status: `text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg`
+
+### Ícones sempre de `lucide-react`
+- Nunca instale outra biblioteca de ícones
+- Use `className="w-4 h-4"` ou `w-5 h-5` como tamanhos padrão
+
+---
+
+## LEI 6 — Layout Mobile-First (B2C)
+
+### Shell do app
+```tsx
+// Container rígido estilo app mobile — NUNCA altere esta estrutura
+<div className="max-w-md mx-auto h-screen flex flex-col overflow-hidden shadow-2xl">
+  <header className="shrink-0">...</header>
+  <main className="flex-1 flex flex-col min-h-0">
+    <MenuComponent />  {/* contém o overflow-y-auto interno */}
+  </main>
+</div>
+```
+
+### BottomNav sempre inline, nunca `fixed`
+```tsx
+// CORRETO — inline no flex column, cola no fundo
+<div className="w-full shrink-0 border-t">...</div>
+
+// ERRADO — sai do container max-w-md
+<div className="fixed bottom-0 w-full">...</div>
+```
+
+### Modais e drawers
+- Sempre `overscroll-contain` no container scrollável interno de drawers
+- Sempre travar `document.body.style.overflow = 'hidden'` ao abrir modais
+- Sempre `max-w-md mx-auto` nos bottom sheets para respeitar o container
+
+---
+
+## LEI 7 — TypeScript Estrito
+
+### Sem `any` em código novo
+```ts
+// ERRADO
+const data: any = await prisma.order.findFirst(...)
+const handler = (e: any) => ...
+
+// CORRETO — tipar explicitamente ou inferir
+const data = await prisma.order.findFirst(...)  // inferido pelo Prisma
+const handler = (e: React.ChangeEvent<HTMLInputElement>) => ...
+```
+
+### Sem `@ts-ignore` sem comentário justificado
+- Se precisar de `@ts-ignore`, documente o motivo na linha anterior e crie um item no `BUG_TRACKER.md`
+- Prefira `as unknown as Tipo` com comentário a `@ts-ignore`
+
+### Tipos exportados de componentes-pai
+- Tipos reutilizáveis entre componentes vivem no arquivo do componente mais "pai"
+- Exemplo: `StoreTheme` e `Product` exportados de `MenuComponent.tsx`
+
+---
+
+## LEI 8 — Padrões de Componente
+
+### Computed values, não `useState` desnecessário
+```ts
+// CORRETO — valor derivado do estado existente
+const cartTotal = cart.reduce((acc, item) => acc + item.displayPrice * item.quantity, 0)
+const changeForError = paymentMethod === 'CASH' && parseFloat(changeFor) < orderTotal
+
+// ERRADO — estado duplicado
+const [cartTotal, setCartTotal] = useState(0)
+useEffect(() => { setCartTotal(cart.reduce(...)) }, [cart])
+```
+
+### IDs seguros
+```ts
+// CORRETO
+import { randomUUID } from 'crypto'
+id: randomUUID()
+
+// ERRADO
+id: Math.random().toString(36).substr(2, 9)
+```
+
+### Cleanup em useEffect com recursos externos
+```ts
+// CORRETO — revoga ObjectURL ao desmontar
+useEffect(() => {
+  const url = URL.createObjectURL(file)
+  setPreview(url)
+  return () => URL.revokeObjectURL(url)
+}, [file])
+
+// CORRETO — cancela requisição em flight
+useEffect(() => {
+  let cancelled = false
+  fetchData().then(data => { if (!cancelled) setState(data) })
+  return () => { cancelled = true }
+}, [dep])
+```
+
+---
+
+## LEI 9 — Framer Motion
+
+### Use `AnimatePresence` para mount/unmount
+```tsx
+import { motion, AnimatePresence } from 'framer-motion'
+
+<AnimatePresence>
+  {isOpen && (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+    >
+      ...
+    </motion.div>
+  )}
+</AnimatePresence>
+```
+
+### Delays escalonados em listas
+```tsx
+<motion.div
+  initial={{ opacity: 0, y: 12 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ delay: idx * 0.04 }}
+>
+```
+
+---
+
+## LEI 10 — Nunca Faça
+
+- ❌ Nunca comite `console.log` de debug em produção
+- ❌ Nunca exponha `SUPABASE_SERVICE_ROLE_KEY` em variáveis `NEXT_PUBLIC_`
+- ❌ Nunca faça query Prisma sem filtrar por `storeId` em dados de tenant
+- ❌ Nunca use `fixed` no layout mobile B2C (quebra o container `max-w-md`)
+- ❌ Nunca hardcode cores RGB/hex em componentes B2C — use `storeTheme`
+- ❌ Nunca instale bibliotecas de UI (shadcn, MUI, Chakra) — o design system é custom em Tailwind
+- ❌ Nunca faça query dentro de `.map()` (N+1)
+- ❌ Nunca use `Math.random()` para gerar IDs persistidos
+- ❌ Nunca valide dados de pagamento apenas no client — sempre no server
+- ❌ Nunca implemente feature sem registrar no PROJECT_MAP e, se for bug, no BUG_TRACKER

@@ -2,14 +2,12 @@ import './globals.css'
 import type { Metadata, Viewport } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Costa e Souza Churrascaria · Luziânia GO',
-  description: 'A Pioneira do Jardim Ingá. Sabor e Tradição. Carnes selecionadas na brasa, entregues na sua porta em Luziânia e região.',
-  keywords: ['churrascaria', 'delivery', 'luziânia', 'costa e souza', 'picanha', 'jardim ingá'],
-  manifest: '/manifest.json',
+  title: 'Saiu Delivery SaaS',
+  description: 'Plataforma para dezenas de deliverys.',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Brasa Delivery',
+    title: 'Saiu Delivery',
   },
 }
 
@@ -18,19 +16,13 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: '#E31C1C',
+  themeColor: '#000000',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <head>
-        {/* PWA Meta Tags */}
-        <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="mobile-web-app-capable" content="yes" />
-      </head>
-      <body className="bg-black text-zinc-100 antialiased min-h-screen">
+      <body className="antialiased min-h-screen font-sans">
         {children}
       </body>
     </html>

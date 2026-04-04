@@ -1,18 +1,41 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { headers } from 'next/headers';
 
-// O middleware.ts já garante que só admin autenticado chega aqui.
-// Não precisamos mais verificar senha no body.
+// FASE 3: PEDIDOS MULTI-TENANT COM MIDDLEWARE INJECTS
+
+async function getActiveStore() {
+  const headerList = await headers();
+  const host = headerList.get('x-store-domain');
+
+  if (!host) return null;
+
+  const slug = host.replace('.saiudelivery.com.br', '');
+
+  return await prisma.store.findFirst({
+    where: {
+      OR: [
+        { customDomain: host },
+        { slug: slug }
+      ]
+    }
+  });
+}
 
 export async function GET(req: Request) {
   try {
-    // Busca pedidos de hoje
+    const store = await getActiveStore();
+    if (!store) {
+      return NextResponse.json({ error: 'Tenant não identificado' }, { status: 401 });
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const orders = await prisma.order.findMany({
       where: {
          createdAt: { gte: today },
+         storeId: store.id
       },
       include: { 
         items: { 
@@ -41,14 +64,20 @@ export async function PUT(req: Request) {
        return NextResponse.json({ error: 'orderId e status necessários' }, { status: 400 });
      }
 
-     // Validar que status é um valor válido
      const VALID_STATUSES = ['PENDING', 'PREPARING', 'READY_FOR_PICKUP', 'DISPATCHED', 'DELIVERED', 'CANCELED']
      if (!VALID_STATUSES.includes(status)) {
        return NextResponse.json({ error: 'Status inválido' }, { status: 400 });
      }
      
+     // 🔒 Segurança: Mesmo na atualização de status, garantimos que não vaze tenant
+     const store = await getActiveStore();
+
+     if (!store) {
+       return NextResponse.json({ error: 'SaaS Desconfigurado' }, { status: 500 });
+     }
+
      await prisma.order.update({ 
-       where: { id: orderId }, 
+       where: { id: orderId, storeId: store.id }, 
        data: { status } 
      });
      

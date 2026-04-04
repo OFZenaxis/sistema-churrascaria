@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Smartphone, Loader2, MapPin, CheckCircle2, Search, ChevronRight } from 'lucide-react'
 import { loginWithPhone, saveAddress } from '../app/actions/auth'
+import type { StoreTheme } from './MenuComponent'
 
 type Step = 'phone' | 'address' | 'done'
 
@@ -16,15 +17,27 @@ type ViaCepResponse = {
   erro?: boolean
 }
 
+const DEFAULT_THEME: Partial<StoreTheme> = {
+  brandColor: '#10b981',
+  phoneBg: '#f8fafc',
+  phoneCard: '#ffffff',
+  phoneText: '#0f172a',
+  phoneSubText: '#64748b',
+}
+
 type PhoneLoginProps = {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  storeId: string
+  storeTheme?: StoreTheme
 }
 
 const LABEL_OPTIONS = ['Casa', 'Trabalho', 'Outro']
 
-export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginProps) {
+export default function PhoneLogin({ isOpen, onClose, onSuccess, storeId, storeTheme }: PhoneLoginProps) {
+  const { brandColor, phoneBg, phoneCard, phoneText, phoneSubText } = storeTheme ?? DEFAULT_THEME as StoreTheme
+
   const [step, setStep] = useState<Step>('phone')
 
   // Etapa 1
@@ -96,6 +109,13 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginPro
       .finally(() => setCepLoading(false))
   }, [cep])
 
+  const formatPhone = (value: string) => {
+    const d = value.replace(/\D/g, '').slice(0, 11)
+    if (d.length <= 2) return d
+    if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`
+    return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+  }
+
   const formatCep = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 8)
     if (digits.length > 5) return `${digits.slice(0, 5)}-${digits.slice(5)}`
@@ -106,57 +126,64 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginPro
     e.preventDefault()
     setLoginLoading(true)
     setLoginError('')
-    const res = await loginWithPhone(phone, name)
+    const res = await loginWithPhone(phone, name, storeId)
     setLoginLoading(false)
     if (res.success) {
       setStep('address')
     } else {
-      setLoginError(res.error || 'Erro ao fazer login.')
+      setLoginError(res.error || 'Erro ao identificar.')
     }
   }
 
   const handleAddressSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!cepFound) { setAddressError('Busque um CEP válido antes de continuar.'); return }
     setAddressLoading(true)
     setAddressError('')
-    const res = await saveAddress({ label, cep, rua, numero, complemento, bairro, cidade, estado })
+    const res = await saveAddress({ rua, numero, complemento, bairro, cidade, estado, cep, label }, storeId)
     setAddressLoading(false)
     if (res.success) {
       setStep('done')
-      setTimeout(() => onSuccess(), 900)
+      setTimeout(() => onSuccess(), 1200)
     } else {
       setAddressError(res.error || 'Erro ao salvar endereço.')
     }
   }
 
-  // ── Estilos base ──
-  const inputCls = "input-dark"
-  const readonlyCls = "input-dark opacity-40 cursor-not-allowed"
-  const labelCls = "block text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-1.5"
-
+  const border = phoneSubText + '33'
+  const subtleBg = phoneSubText + '18'
   const progressWidth = step === 'phone' ? '33%' : step === 'address' ? '66%' : '100%'
+
+  const inputStyle = {
+    background: phoneCard,
+    color: phoneText,
+    borderColor: border,
+    caretColor: brandColor,
+  }
+  const inputCls = "w-full rounded-xl border-2 px-4 py-3 text-sm font-medium outline-none transition-colors min-h-[52px]"
+  const labelCls = "block text-[10px] font-black uppercase tracking-widest mb-1.5"
 
   return (
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/95"
+          className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
           <motion.div
-            className="bg-[#0d0d0d] w-full max-w-md rounded-t-[28px] sm:rounded-[28px] border-t sm:border border-[#1f1f1f] shadow-2xl overflow-hidden"
+            className="w-full max-w-md rounded-t-[28px] sm:rounded-[28px] border-t sm:border shadow-2xl overflow-hidden"
+            style={{ background: phoneBg, borderColor: border }}
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 220 }}
           >
             {/* Progress bar */}
-            <div className="h-1 bg-[#1a1a1a] w-full">
+            <div className="h-1 w-full" style={{ background: border }}>
               <motion.div
-                className="h-full bg-[#E31C1C]"
+                className="h-full"
+                style={{ background: brandColor }}
                 animate={{ width: progressWidth }}
                 transition={{ duration: 0.4, ease: 'easeInOut' }}
               />
@@ -164,13 +191,14 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginPro
 
             {/* Handle mobile */}
             <div className="flex justify-center pt-3 pb-0 sm:hidden">
-              <div className="w-10 h-1 bg-[#2a2a2a] rounded-full" />
+              <div className="w-10 h-1 rounded-full" style={{ background: border }} />
             </div>
 
-            <div className="px-6 pb-8 pt-4">
+            <div className="px-6 pb-8 pt-4 relative">
               <button
                 onClick={onClose}
-                className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-full bg-[#1a1a1a] text-zinc-500 hover:text-white transition-colors z-10"
+                className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-full transition-colors z-10"
+                style={{ background: subtleBg, color: phoneSubText }}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -187,28 +215,33 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginPro
                     transition={{ duration: 0.2 }}
                   >
                     <div className="text-center mb-7">
-                      <div className="w-14 h-14 rounded-full bg-[#E31C1C]/10 border border-[#E31C1C]/20 flex items-center justify-center mx-auto mb-4">
-                        <Smartphone className="w-7 h-7 text-[#E31C1C]" />
+                      <div
+                        className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 border"
+                        style={{ background: brandColor + '18', borderColor: brandColor + '33' }}
+                      >
+                        <Smartphone className="w-7 h-7" style={{ color: brandColor }} />
                       </div>
-                      <h2 className="text-2xl font-black text-white uppercase tracking-tight">Identificação</h2>
-                      <p className="text-zinc-600 text-sm mt-1">Informe seu WhatsApp para entregarmos.</p>
+                      <h2 className="text-2xl font-black uppercase tracking-tight" style={{ color: phoneText }}>Identificação</h2>
+                      <p className="text-sm mt-1" style={{ color: phoneSubText }}>Informe seu WhatsApp para entregarmos.</p>
                     </div>
 
-                    <form onSubmit={handleLoginSubmit} className="space-y-4">
+                    <form onSubmit={handleLoginSubmit} className="space-y-4 pb-4">
                       <div>
-                        <label className={labelCls}>Telefone / WhatsApp</label>
+                        <label className={labelCls} style={{ color: phoneSubText }}>Telefone / WhatsApp</label>
                         <input
                           type="tel"
                           inputMode="tel"
                           required
                           value={phone}
-                          onChange={e => setPhone(e.target.value)}
+                          onChange={e => setPhone(formatPhone(e.target.value))}
                           placeholder="(61) 99999-9999"
+                          maxLength={15}
                           className={`${inputCls} font-mono`}
+                          style={inputStyle}
                         />
                       </div>
                       <div>
-                        <label className={labelCls}>Seu nome</label>
+                        <label className={labelCls} style={{ color: phoneSubText }}>Seu nome</label>
                         <input
                           type="text"
                           required
@@ -216,17 +249,19 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginPro
                           onChange={e => setName(e.target.value)}
                           placeholder="Como te chamamos?"
                           className={inputCls}
+                          style={inputStyle}
                         />
                       </div>
 
                       {loginError && (
-                        <p className="text-red-400 text-sm font-bold text-center bg-red-950/30 border border-red-900/30 rounded-xl p-3">{loginError}</p>
+                        <p className="text-red-500 text-sm font-bold text-center bg-red-50 border border-red-200 rounded-xl p-3">{loginError}</p>
                       )}
 
                       <button
                         type="submit"
                         disabled={loginLoading}
-                        className="btn-brasa w-full mt-2"
+                        className="w-full flex items-center justify-center gap-2 text-white font-black text-sm uppercase px-6 py-4 rounded-xl active:scale-[0.98] transition-all min-h-[52px] mt-2 disabled:opacity-60"
+                        style={{ backgroundColor: brandColor }}
                       >
                         {loginLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                           <>CONTINUAR <ChevronRight className="w-4 h-4" /></>
@@ -246,39 +281,45 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginPro
                     transition={{ duration: 0.2 }}
                   >
                     <div className="text-center mb-6">
-                      <div className="w-14 h-14 rounded-full bg-[#E31C1C]/10 border border-[#E31C1C]/20 flex items-center justify-center mx-auto mb-4">
-                        <MapPin className="w-7 h-7 text-[#E31C1C]" />
+                      <div
+                        className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 border"
+                        style={{ background: brandColor + '18', borderColor: brandColor + '33' }}
+                      >
+                        <MapPin className="w-7 h-7" style={{ color: brandColor }} />
                       </div>
-                      <h2 className="text-2xl font-black text-white uppercase tracking-tight">Endereço</h2>
-                      <p className="text-zinc-600 text-sm mt-1">Salve para entregas futuras.</p>
+                      <h2 className="text-2xl font-black uppercase tracking-tight" style={{ color: phoneText }}>Endereço</h2>
+                      <p className="text-sm mt-1" style={{ color: phoneSubText }}>Salve para entregas futuras.</p>
                     </div>
 
-                    <form onSubmit={handleAddressSubmit} className="space-y-4 max-h-[52vh] overflow-y-auto pr-0.5">
+                    <form onSubmit={handleAddressSubmit} className="space-y-4 max-h-[52vh] overflow-y-auto overscroll-contain pr-0.5 pb-10">
 
-                      {/* Label */}
+                      {/* Tipo */}
                       <div>
-                        <label className={labelCls}>Tipo</label>
+                        <label className={labelCls} style={{ color: phoneSubText }}>Tipo</label>
                         <div className="flex gap-2">
-                          {LABEL_OPTIONS.map(opt => (
-                            <button
-                              key={opt}
-                              type="button"
-                              onClick={() => setLabel(opt)}
-                              className={`flex-1 py-3 rounded-xl border-2 text-xs font-black uppercase transition-all ${
-                                label === opt
-                                  ? 'border-[#E31C1C] bg-[#E31C1C]/10 text-[#E31C1C]'
-                                  : 'border-[#1f1f1f] bg-[#111] text-zinc-600 hover:border-[#2a2a2a]'
-                              }`}
-                            >
-                              {opt === 'Casa' ? '🏠 ' : opt === 'Trabalho' ? '💼 ' : '📍 '}{opt}
-                            </button>
-                          ))}
+                          {LABEL_OPTIONS.map(opt => {
+                            const isSelected = label === opt
+                            return (
+                              <button
+                                key={opt}
+                                type="button"
+                                onClick={() => setLabel(opt)}
+                                className="flex-1 py-3 rounded-xl border-2 text-xs font-black uppercase transition-all"
+                                style={isSelected
+                                  ? { borderColor: brandColor, background: brandColor + '18', color: brandColor }
+                                  : { borderColor: border, background: phoneCard, color: phoneSubText }
+                                }
+                              >
+                                {opt === 'Casa' ? '🏠 ' : opt === 'Trabalho' ? '💼 ' : '📍 '}{opt}
+                              </button>
+                            )
+                          })}
                         </div>
                       </div>
 
                       {/* CEP */}
                       <div>
-                        <label className={labelCls}>CEP</label>
+                        <label className={labelCls} style={{ color: phoneSubText }}>CEP</label>
                         <div className="relative">
                           <input
                             type="text"
@@ -289,34 +330,37 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginPro
                             placeholder="00000-000"
                             maxLength={9}
                             className={`${inputCls} pr-12 font-mono`}
+                            style={inputStyle}
                           />
                           <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                            {cepLoading && <Loader2 className="w-5 h-5 text-[#E31C1C] animate-spin" />}
+                            {cepLoading && <Loader2 className="w-5 h-5 animate-spin" style={{ color: brandColor }} />}
                             {cepFound && !cepLoading && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
-                            {!cepFound && !cepLoading && cep.length > 0 && <Search className="w-4 h-4 text-zinc-700" />}
+                            {!cepFound && !cepLoading && cep.length > 0 && <Search className="w-4 h-4" style={{ color: phoneSubText }} />}
                           </div>
                         </div>
-                        {cepError && <p className="text-red-400 text-xs mt-1.5 font-bold">{cepError}</p>}
+                        {cepError && <p className="text-red-500 text-xs mt-1.5 font-bold">{cepError}</p>}
                         {cepFound && <p className="text-emerald-500 text-xs mt-1.5 font-bold">✓ CEP encontrado — campos preenchidos automaticamente</p>}
                       </div>
 
                       {/* Rua */}
                       <div>
-                        <label className={labelCls}>Rua / Logradouro</label>
+                        <label className={labelCls} style={{ color: phoneSubText }}>Rua / Logradouro</label>
                         <input
                           type="text"
                           value={rua}
                           onChange={e => setRua(e.target.value)}
-                          placeholder="Aguardando CEP..."
-                          className={cepFound ? inputCls : readonlyCls}
-                          readOnly={!cepFound}
+                          placeholder={cepFound ? 'Rua / Logradouro' : 'Digite o CEP ou escreva aqui'}
+                          className={inputCls}
+                          style={{ ...inputStyle, opacity: cepFound ? 1 : 0.65 }}
                         />
                       </div>
 
                       {/* Número + Bairro */}
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className={labelCls}>Número <span className="text-[#E31C1C]">*</span></label>
+                          <label className={labelCls} style={{ color: phoneSubText }}>
+                            Número <span style={{ color: brandColor }}>*</span>
+                          </label>
                           <input
                             type="text"
                             inputMode="numeric"
@@ -325,26 +369,27 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginPro
                             onChange={e => setNumero(e.target.value)}
                             placeholder="Ex: 42"
                             className={inputCls}
+                            style={inputStyle}
                           />
                         </div>
                         <div>
-                          <label className={labelCls}>Bairro</label>
+                          <label className={labelCls} style={{ color: phoneSubText }}>Bairro</label>
                           <input
                             type="text"
                             value={bairro}
                             onChange={e => setBairro(e.target.value)}
-                            placeholder="—"
-                            className={cepFound ? inputCls : readonlyCls}
-                            readOnly={!cepFound}
+                            placeholder="Bairro"
+                            className={inputCls}
+                            style={{ ...inputStyle, opacity: cepFound ? 1 : 0.65 }}
                           />
                         </div>
                       </div>
 
-                      {/* Complemento OBRIGATÓRIO */}
+                      {/* Complemento */}
                       <div>
-                        <label className={labelCls}>
-                          Complemento <span className="text-[#E31C1C]">*</span>
-                          <span className="text-zinc-700 normal-case font-normal ml-1">(obrigatório para entrega)</span>
+                        <label className={labelCls} style={{ color: phoneSubText }}>
+                          Complemento <span style={{ color: brandColor }}>*</span>
+                          <span className="normal-case font-normal ml-1" style={{ color: phoneSubText }}>(obrigatório para entrega)</span>
                         </label>
                         <input
                           type="text"
@@ -353,44 +398,48 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginPro
                           onChange={e => setComplemento(e.target.value)}
                           placeholder="Ex: Qda 36, Lote 03 - Fundos"
                           className={inputCls}
+                          style={inputStyle}
                         />
                       </div>
 
                       {/* Cidade + Estado */}
                       <div className="grid grid-cols-3 gap-3">
                         <div className="col-span-2">
-                          <label className={labelCls}>Cidade</label>
+                          <label className={labelCls} style={{ color: phoneSubText }}>Cidade</label>
                           <input
                             type="text"
                             value={cidade}
                             onChange={e => setCidade(e.target.value)}
                             placeholder="—"
-                            className={cepFound ? inputCls : readonlyCls}
+                            className={inputCls}
+                            style={{ ...inputStyle, opacity: cepFound ? 1 : 0.5 }}
                             readOnly={!cepFound}
                           />
                         </div>
                         <div>
-                          <label className={labelCls}>UF</label>
+                          <label className={labelCls} style={{ color: phoneSubText }}>UF</label>
                           <input
                             type="text"
                             value={estado}
                             onChange={e => setEstado(e.target.value)}
                             placeholder="GO"
                             maxLength={2}
-                            className={cepFound ? `${inputCls} uppercase text-center` : `${readonlyCls} uppercase text-center`}
+                            className={`${inputCls} uppercase text-center`}
+                            style={{ ...inputStyle, opacity: cepFound ? 1 : 0.5 }}
                             readOnly={!cepFound}
                           />
                         </div>
                       </div>
 
                       {addressError && (
-                        <p className="text-red-400 text-sm font-bold text-center bg-red-950/30 border border-red-900/30 rounded-xl p-3">{addressError}</p>
+                        <p className="text-red-500 text-sm font-bold text-center bg-red-50 border border-red-200 rounded-xl p-3">{addressError}</p>
                       )}
 
                       <button
                         type="submit"
                         disabled={addressLoading || !cepFound}
-                        className="btn-brasa w-full"
+                        className="w-full flex items-center justify-center gap-2 text-white font-black text-sm uppercase px-6 py-4 rounded-xl active:scale-[0.98] transition-all min-h-[52px] disabled:opacity-50"
+                        style={{ backgroundColor: brandColor }}
                       >
                         {addressLoading ? (
                           <Loader2 className="w-5 h-5 animate-spin" />
@@ -418,8 +467,8 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess }: PhoneLoginPro
                     >
                       <CheckCircle2 className="w-10 h-10 text-emerald-500" />
                     </motion.div>
-                    <h2 className="text-2xl font-black text-white uppercase">PRONTO!</h2>
-                    <p className="text-zinc-500 text-sm mt-2">Endereço salvo. Finalizando seu pedido...</p>
+                    <h2 className="text-2xl font-black uppercase" style={{ color: phoneText }}>PRONTO!</h2>
+                    <p className="text-sm mt-2" style={{ color: phoneSubText }}>Endereço salvo. Finalizando seu pedido...</p>
                   </motion.div>
                 )}
 

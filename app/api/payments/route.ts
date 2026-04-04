@@ -2,16 +2,31 @@ import { NextResponse } from 'next/server';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { prisma } from '@/lib/prisma';
 
+interface MercadoPagoPaymentPayload {
+  transaction_amount: number
+  payment_method_id: string
+  description: string
+  payer: {
+    email: string
+    identification?: { type: string; number: string }
+  }
+  external_reference: string
+  notification_url?: string
+  // Campos exclusivos de cartão de crédito
+  token?: string
+  installments?: number
+  issuer_id?: string | number
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     
     // ══════════════════════════════════════════════════════════════
-    // O Payment Brick envia: { formData: { token, payment_method_id, ... }, orderId }
-    // Precisamos extrair de formData, não do root do body
+    // Extração de dados (Checkout Transparente envia formData)
     // ══════════════════════════════════════════════════════════════
     const orderId = body.orderId;
-    const formData = body.formData || body; // fallback se vier flat
+    const formData = body.formData || body;
 
     const {
       token,
@@ -21,7 +36,7 @@ export async function POST(req: Request) {
       payer,
     } = formData;
 
-    // ── Validação ──
+    // ── Validação Inicial ──
     if (!orderId) {
       return NextResponse.json({ error: 'orderId é obrigatório' }, { status: 400 });
     }
@@ -30,16 +45,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Método de pagamento não informado' }, { status: 400 });
     }
 
-    const access_token = process.env.MP_ACCESS_TOKEN;
-    if (!access_token) {
-      console.error('MP Access Token ausente.');
-      return NextResponse.json({ error: 'Configuração MP ausente' }, { status: 500 });
-    }
-
-    // 🔒 Buscar valor REAL do banco
+    // 🔒 Buscar pedido real do banco incluindo a configuração de pagamento da Loja
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      select: { id: true, totalAmount: true, customerName: true, paymentStatus: true }
+      include: {
+        store: {
+          include: { paymentConfig: true }
+        }
+      }
     });
 
     if (!order) {
@@ -50,26 +63,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Pedido já foi pago' }, { status: 400 });
     }
 
-    const transaction_amount = Number(order.totalAmount);
+    const transaction_amount = Number(Number(order.totalAmount).toFixed(2));
     if (!transaction_amount || transaction_amount <= 0) {
       return NextResponse.json({ error: 'Valor do pedido inválido' }, { status: 400 });
+    }
+
+    // ── Resgatar o Acess Token específico do Tenant (Loja) ──
+    const access_token = order.store.paymentConfig?.mpAccessToken;
+    if (!access_token) {
+      console.error('[payments] MP Access Token ausente para storeId:', order.storeId);
+      return NextResponse.json({ error: 'Esta loja não configurou pagamentos ainda.' }, { status: 500 });
     }
 
     const client = new MercadoPagoConfig({ accessToken: access_token, options: { timeout: 5000 } });
     const payment = new Payment(client);
 
+    // ── Preparar URL de Webhook (só inclui em produção — MP rejeita localhost) ──
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+    const notification_url =
+      baseUrl?.startsWith('https://')
+        ? `${baseUrl}/api/webhooks/mercadopago?storeId=${order.storeId}`
+        : undefined;
+
     // ══════════════════════════════════════════════════════════════
-    // Montar payload dinâmico: Cartão precisa de token, Pix não
+    // Montar payload dinâmico (Cartão vs Pix)
     // ══════════════════════════════════════════════════════════════
-    const paymentBody: any = {
+    const paymentBody: MercadoPagoPaymentPayload = {
       transaction_amount,
       payment_method_id,
-      description: `Costa e Souza - Pedido #${order.id.split('-')[0].toUpperCase()}`,
+      description: `Pedido #${order.id.split('-')[0].toUpperCase()} - ${order.store.name}`,
       payer: {
-        email: payer?.email || 'cliente@costaesouza.com.br',
+        email: payer?.email || 'cliente@saiudelivery.com.br',
         identification: payer?.identification || undefined,
       },
       external_reference: orderId,
+      ...(notification_url && { notification_url }),
     };
 
     // Cartão de crédito: precisa de token, issuer e parcelas
@@ -79,9 +107,10 @@ export async function POST(req: Request) {
       paymentBody.issuer_id = issuer_id;
     }
 
+    // Criar requisição MP
     const mpRes = await payment.create({ body: paymentBody });
 
-    // Salvar status inicial
+    // Atualizar Status inicial (pending)
     await prisma.order.update({
       where: { id: orderId },
       data: { paymentStatus: mpRes.status }
@@ -95,7 +124,7 @@ export async function POST(req: Request) {
       qr_code_base64: payment_method_id === 'pix' ? mpRes.point_of_interaction?.transaction_data?.qr_code_base64 : undefined,
     });
   } catch (err: any) {
-    console.error('Payment Error:', err?.message || err);
-    return NextResponse.json({ error: 'Falha no pagamento. Tente novamente.' }, { status: 500 });
+    console.error('[payments] Erro:', err instanceof Error ? err.message : 'Erro desconhecido');
+    return NextResponse.json({ error: 'Falha no processamento. Tente novamente.' }, { status: 500 });
   }
 }

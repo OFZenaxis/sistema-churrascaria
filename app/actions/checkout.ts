@@ -3,40 +3,95 @@
 import { prisma } from '@/lib/prisma'
 import { OrderStatus } from '@prisma/client'
 import { getSessionUser } from './auth'
+import { geocodeAddress, getDrivingDistance, calcDeliveryFee } from '@/lib/mapbox'
 
 type PaymentMethod = 'PIX' | 'CARD_ONLINE' | 'CARD_MACHINE' | 'CASH'
-
-// ══════════════════════════════════════════════════════════════════
-// UPSELLS SERVER-SIDE (espelho exato do ProductModal.tsx)
-// O frontend envia apenas os IDs; os preços são calculados AQUI.
-// ══════════════════════════════════════════════════════════════════
-const SERVER_UPSELLS: Record<string, { name: string; price: number }> = {
-  u1: { name: 'Carne Assada Extra', price: 10.0 },
-  u2: { name: 'Linguiça Toscana Extra', price: 4.0 },
-  u3: { name: 'Ovo Frito', price: 3.0 },
-}
 
 type CartItemInput = {
   productId: string
   quantity: number
   optionsText?: string
-  upsellIds?: string[]
+}
+
+// ── Estimativa de frete (chamada no checkout modal antes de confirmar) ─────────
+export async function estimateDeliveryFee(
+  addressId: string,
+  storeId: string
+): Promise<{ fee: number; distanceKm: number | null; outOfRange: boolean; error?: string }> {
+  try {
+    const [address, store] = await Promise.all([
+      prisma.address.findFirst({
+        where: { id: addressId },
+        select: { lat: true, lng: true, rua: true, numero: true, bairro: true, cidade: true, estado: true }
+      }),
+      prisma.store.findUnique({
+        where: { id: storeId },
+        select: { storeLat: true, storeLng: true, baseDeliveryFee: true, deliveryFeePerKm: true, maxDeliveryRadius: true }
+      })
+    ])
+
+    if (!address || !store) return { fee: 0, distanceKm: null, outOfRange: false }
+
+    // Se a loja não tiver coordenadas configuradas, cobra apenas a taxa base
+    if (!store.storeLat || !store.storeLng) {
+      return { fee: store.baseDeliveryFee, distanceKm: null, outOfRange: false }
+    }
+
+    let lat = address.lat
+    let lng = address.lng
+
+    // Geocodifica se o endereço ainda não tiver coordenadas
+    if (!lat || !lng) {
+      const fullAddress = `${address.rua}, ${address.numero}, ${address.bairro}, ${address.cidade}, ${address.estado}, Brasil`
+      const coords = await geocodeAddress(fullAddress)
+      if (coords) {
+        lat = coords.lat
+        lng = coords.lng
+        await prisma.address.update({ where: { id: addressId }, data: { lat, lng } })
+      }
+    }
+
+    if (!lat || !lng) {
+      return { fee: store.baseDeliveryFee, distanceKm: null, outOfRange: false }
+    }
+
+    const distanceKm = await getDrivingDistance(store.storeLat, store.storeLng, lat, lng)
+
+    if (distanceKm === null) {
+      return { fee: store.baseDeliveryFee, distanceKm: null, outOfRange: false }
+    }
+
+    if (distanceKm > store.maxDeliveryRadius) {
+      return { fee: 0, distanceKm, outOfRange: true, error: 'Infelizmente não entregamos neste endereço no momento.' }
+    }
+
+    const fee = calcDeliveryFee(distanceKm, store.baseDeliveryFee, store.deliveryFeePerKm)
+    return { fee, distanceKm, outOfRange: false }
+  } catch {
+    return { fee: 0, distanceKm: null, outOfRange: false }
+  }
 }
 
 export async function submitOrder(
   paymentMethod: PaymentMethod,
   cartItems: CartItemInput[],
   changeFor?: number,
-  addressId?: string
+  addressId?: string,
+  storeId?: string // Adicionado na FASE 1
 ) {
   try {
-    const user: any = await getSessionUser()
+    // 🔒 storeId verificado primeiro — sem ele não há contexto de tenant válido
+    if (!storeId) {
+      throw new Error('Tenant não identificado: storeId ausente no checkout')
+    }
+    const targetStoreId = storeId
+
+    const user = await getSessionUser(storeId)
 
     if (!user) {
       return { success: false, requiresAuth: true }
     }
 
-    // ── Validate cart is not empty ──
     if (!cartItems || cartItems.length === 0) {
       return { success: false, error: 'Carrinho vazio.' }
     }
@@ -50,8 +105,9 @@ export async function submitOrder(
       return { success: false, requiresAddress: true }
     }
 
-    const address = await prisma.address.findUnique({
-      where: { id: targetAddressId }
+    // 🔒 Valida que o endereço pertence ao customer autenticado — impede uso de endereço alheio
+    const address = await prisma.address.findFirst({
+      where: { id: targetAddressId, customerId: user.id }
     })
 
     if (!address) {
@@ -59,20 +115,20 @@ export async function submitOrder(
     }
 
     // ══════════════════════════════════════════════════════════════
-    // 🔒 CÁLCULO DE PREÇO SERVER-SIDE (a "Trava do Dinheiro")
+    // FASE 1: FILTRO DE PRODUTOS PELO STORE ID
     // ══════════════════════════════════════════════════════════════
-
-    // 1. Buscar TODOS os preços reais do banco de dados
     const productIds = [...new Set(cartItems.map(i => i.productId))]
     const dbProducts = await prisma.product.findMany({
-      where: { id: { in: productIds }, isActive: true },
+      where: { 
+        id: { in: productIds }, 
+        isActive: true,
+        storeId: targetStoreId // 🔒 Validação Multi-Tenant de Catálogo
+      },
       select: { id: true, price: true, name: true }
     })
 
-    // 2. Criar index para lookup rápido
     const priceMap = new Map(dbProducts.map(p => [p.id, p]))
 
-    // 3. Validar que todos os produtos existem e calcular total
     let serverTotal = 0
     const validatedItems: {
       productId: string
@@ -84,26 +140,14 @@ export async function submitOrder(
     for (const item of cartItems) {
       const dbProduct = priceMap.get(item.productId)
       if (!dbProduct) {
-        return { success: false, error: `Produto não encontrado ou indisponível.` }
+        return { success: false, error: `Produto isolado / indisponível para esta Loja.` }
       }
 
       if (item.quantity < 1 || item.quantity > 50) {
         return { success: false, error: 'Quantidade inválida.' }
       }
 
-      // Calcular preço unitário: preço base + upsells
-      let unitPrice = dbProduct.price
-
-      if (item.upsellIds && item.upsellIds.length > 0) {
-        for (const upsellId of item.upsellIds) {
-          const upsell = SERVER_UPSELLS[upsellId]
-          if (upsell) {
-            unitPrice += upsell.price
-          }
-          // IDs inválidos são silenciosamente ignorados (segurança)
-        }
-      }
-
+      const unitPrice = dbProduct.price
       serverTotal += unitPrice * item.quantity
 
       validatedItems.push({
@@ -114,9 +158,7 @@ export async function submitOrder(
       })
     }
 
-    // ══════════════════════════════════════════════════════════════
-
-    // ── Monta endereço formatado ── 
+    // ── Monta endereço formatado ──
     const deliveryAddressStr = [
       `${address.rua}, ${address.numero}`,
       address.complemento,
@@ -125,48 +167,76 @@ export async function submitOrder(
       `CEP ${address.cep}`
     ].filter(Boolean).join(', ')
 
+    // ── Geocodificação do endereço do cliente ──
     let lat = address.lat ?? null
     let lng = address.lng ?? null
 
-    // Geocoding se não tiver cache no Address
-    const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
-    if (mapboxToken && (!lat || !lng)) {
-      try {
-        const fullAddress = `${address.rua}, ${address.numero}, ${address.bairro}, ${address.cidade}, ${address.estado}, Brasil`
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(fullAddress)}.json?access_token=${mapboxToken}&limit=1`
-        const geoRes = await fetch(url, { next: { revalidate: 0 } })
-
-        if (geoRes.ok) {
-          const geoData = await geoRes.json()
-          if (geoData.features?.length > 0) {
-            const [lon, lati] = geoData.features[0].center
-            lng = lon
-            lat = lati
-
-            await prisma.address.update({
-              where: { id: address.id },
-              data: { lat, lng }
-            })
-          }
-        }
-      } catch (err) {
-        console.error("Geocoding failed", err)
+    if (!lat || !lng) {
+      const fullAddress = `${address.rua}, ${address.numero}, ${address.bairro}, ${address.cidade}, ${address.estado}, Brasil`
+      const coords = await geocodeAddress(fullAddress)
+      if (coords) {
+        lat = coords.lat
+        lng = coords.lng
+        await prisma.address.update({ where: { id: address.id }, data: { lat, lng } })
       }
     }
 
-    const zone = await prisma.deliveryZone.findFirst()
+    // ── Busca configurações de entrega do tenant ──
+    const storeDelivery = await prisma.store.findUnique({
+      where: { id: targetStoreId },
+      select: {
+        storeLat: true,
+        storeLng: true,
+        baseDeliveryFee: true,
+        deliveryFeePerKm: true,
+        maxDeliveryRadius: true,
+      }
+    })
 
-    // ── Criar pedido com preço SERVER-SIDE ──
+    // ── Validação de raio e cálculo de frete dinâmico ──
+    let deliveryFee = 0
+
+    if (
+      storeDelivery?.storeLat &&
+      storeDelivery?.storeLng &&
+      lat &&
+      lng
+    ) {
+      const distanceKm = await getDrivingDistance(
+        storeDelivery.storeLat,
+        storeDelivery.storeLng,
+        lat,
+        lng
+      )
+
+      if (distanceKm !== null) {
+        if (distanceKm > storeDelivery.maxDeliveryRadius) {
+          return {
+            success: false,
+            error: 'Infelizmente não entregamos neste endereço no momento.'
+          }
+        }
+        deliveryFee = calcDeliveryFee(
+          distanceKm,
+          storeDelivery.baseDeliveryFee,
+          storeDelivery.deliveryFeePerKm
+        )
+      }
+    }
+
+    serverTotal += deliveryFee
+
+    // ── Criar pedido ──
     const order = await prisma.order.create({
       data: {
-        userId: user.id,
-        customerName: user.name,
-        customerPhone: user.phone,
+        storeId: targetStoreId, // 🔒 Tenant
+        customerId: user.id,
+        customerName: user.name || "Cliente sem Nome",
+        customerPhone: user.phone || "00000000000",
         status: OrderStatus.PENDING,
-        totalAmount: serverTotal, // 🔒 Calculado pelo servidor, NUNCA pelo browser
+        totalAmount: serverTotal,
         paymentMethod,
         changeFor: paymentMethod === 'CASH' ? (changeFor ?? null) : null,
-        deliveryZoneId: zone?.id,
         estimatedDeliveryTime: 30,
         deliveryAddress: deliveryAddressStr,
         addressId: address.id,

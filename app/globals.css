@@ -1,224 +1,65 @@
 @import "tailwindcss";
 
-/* ==============================
-   CHURRASCARIA COSTA E SOUZA
-   Design System v1.0 - Elite
-   ============================== */
-
-@theme {
-  --color-brasa: #E31C1C;
-  --color-brasa-dark: #B51515;
-  --color-brasa-light: #FF2E2E;
-  --color-card: #111111;
-  --color-surface: #0a0a0a;
+/* ── Scrollbar totalmente invisível ── */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-@layer base {
-  :root {
-    --background: 0 0% 0%;
-    --foreground: 0 0% 97%;
-  }
+*::-webkit-scrollbar {
+  display: none;
+}
 
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
+/* ── Utilitário de scrollbar oculta (compatível com todos os browsers) ── */
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
 
-  html {
-    scroll-behavior: smooth;
-    -webkit-tap-highlight-color: transparent;
-  }
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
 
-  body {
-    background: #000;
-    color: #f5f5f5;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    overscroll-behavior: none;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
+/* ── Safe area para notch / bottom bar ── */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
 
-  /* ── Scrollbar totalmente invisível ── */
-  * {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  *::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* ── Safe area para notch / bottom bar ── */
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom, 16px);
-  }
-  .pb-nav {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-  }
+.pb-nav {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ── Animação de entrada suave ── */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
+
 .animate-fade-up {
   animation: fadeUp 0.35s ease both;
 }
 
 /* ── Shimmer skeleton ── */
 @keyframes shimmer {
-  0%   { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
+  0% {
+    background-position: -400px 0;
+  }
+
+  100% {
+    background-position: 400px 0;
+  }
 }
+
 .skeleton {
   background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
   background-size: 800px 100%;
   animation: shimmer 1.4s infinite linear;
   border-radius: 12px;
-}
-
-/* ── Botão principal Vermelho Brasa ── */
-.btn-brasa {
-  background: #E31C1C;
-  color: #fff;
-  font-weight: 900;
-  font-size: 1.1rem;
-  letter-spacing: 0.02em;
-  border-radius: 14px;
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: background 0.15s, transform 0.1s;
-  -webkit-tap-highlight-color: transparent;
-  border: none;
-  cursor: pointer;
-  text-transform: uppercase;
-}
-.btn-brasa:hover  { background: #FF2E2E; }
-.btn-brasa:active { transform: scale(0.97); background: #B51515; }
-.btn-brasa:disabled { background: #333; color: #666; pointer-events: none; }
-
-/* ── Card de produto dark ── */
-.card-product {
-  background: #111;
-  border: 1.5px solid #1f1f1f;
-  border-radius: 20px;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  overflow: hidden;
-}
-.card-product:hover {
-  border-color: #E31C1C44;
-  box-shadow: 0 0 24px #E31C1C18;
-}
-
-/* ── Input escuro padrão ── */
-.input-dark {
-  background: #0a0a0a;
-  border: 1.5px solid #2a2a2a;
-  border-radius: 12px;
-  padding: 14px 16px;
-  color: #fff;
-  font-size: 1rem;
-  width: 100%;
-  transition: border-color 0.15s;
-  outline: none;
-  -webkit-appearance: none;
-}
-.input-dark:focus {
-  border-color: #E31C1C;
-  box-shadow: 0 0 0 3px #E31C1C22;
-}
-.input-dark::placeholder { color: #555; }
-
-/* ── Bottom Nav ── */
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 64px;
-  background: #0d0d0d;
-  border-top: 1px solid #1f1f1f;
-  display: flex;
-  align-items: stretch;
-  z-index: 100;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-/* ── Instagram Stories Nav (Marmita Builder) ── */
-.story-nav {
-  display: flex;
-  gap: 16px;
-  overflow-x: auto;
-  padding: 16px 16px 12px 16px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-.story-nav::-webkit-scrollbar {
-  display: none;
-}
-.story-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: transform 0.2s;
-}
-.story-item:active {
-  transform: scale(0.95);
-}
-.story-ring {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  padding: 3px;
-  background: linear-gradient(45deg, #FFB800, #E31C1C, #900000);
-  transition: all 0.3s ease;
-}
-.story-item.inactive .story-ring {
-  background: #333;
-}
-.story-img-container {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  border: 3px solid #000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #111;
-  font-size: 28px;
-  overflow: hidden;
-}
-.story-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: #888;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  transition: color 0.3s;
-}
-.story-item:not(.inactive) .story-label {
-  color: #fff;
-}
-
-
-/* ── Selo "MAIS PEDIDO" ── */
-.badge-hot {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: #E31C1C;
-  color: #fff;
-  font-size: 0.65rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  padding: 3px 8px;
-  border-radius: 6px;
-  text-transform: uppercase;
 }

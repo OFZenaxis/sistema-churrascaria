@@ -2,63 +2,75 @@
 
 import { cookies } from 'next/headers'
 import { prisma } from '@/lib/prisma'
+import { signPayload, verifyPayload } from '@/lib/session'
 
-// ===== LOGIN =====
-export async function loginWithPhone(phone: string, customerName?: string) {
+export async function loginWithPhone(phone: string, customerName?: string, storeId?: string) {
+  if (!storeId) throw new Error('Tenant não identificado: storeId ausente no login')
+
   try {
     const formattedPhone = phone.replace(/\D/g, '')
     if (formattedPhone.length < 10) return { success: false, error: 'Número inválido' }
 
-    // Pega ou cria o usuário baseado no telefone
-    let user = await prisma.user.findUnique({ where: { phone: formattedPhone } })
+    let customer = await prisma.customer.findUnique({
+      where: { storeId_phone: { storeId, phone: formattedPhone } }
+    })
 
-    if (!user) {
-      user = await prisma.user.create({
+    if (!customer) {
+      customer = await prisma.customer.create({
         data: {
+          storeId,
           phone: formattedPhone,
           name: customerName || 'Cliente ' + formattedPhone.slice(-4),
         }
       })
     }
 
-    // Salva nos cookies por 30 dias
     const cookieStore = await cookies()
-    cookieStore.set('session_phone', formattedPhone, {
+    // 🔒 Cookie = "storeId|phone" assinado com HMAC — impede que o cliente forje sessão de outro tenant
+    cookieStore.set(`session_token_${storeId}`, signPayload(`${storeId}|${formattedPhone}`), {
       maxAge: 30 * 24 * 60 * 60,
       path: '/',
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production'
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
     })
 
-    return { success: true, user }
+    return { success: true, user: customer }
   } catch (error) {
-    console.error("Erro no login", error)
+    console.error("[auth] Erro no login:", error instanceof Error ? error.message : 'Erro desconhecido')
     return { success: false, error: 'Erro ao entrar.' }
   }
 }
 
-// ===== GET SESSION USER (com endereços) =====
-export async function getSessionUser() {
+export async function getSessionUser(storeId?: string) {
+  if (!storeId) throw new Error('Tenant não identificado: storeId ausente em getSessionUser')
+
   const cookieStore = await cookies()
-  const phone = cookieStore.get('session_phone')?.value
+  const rawToken = cookieStore.get(`session_token_${storeId}`)?.value
+  if (!rawToken) return null
 
-  if (!phone) return null
+  // 🔒 Verifica a assinatura HMAC — rejeita qualquer cookie forjado ou adulterado
+  const payload = verifyPayload(rawToken)
+  if (!payload) return null
 
-  const user = await prisma.user.findUnique({
-    where: { phone },
+  const parts = payload.split('|')
+  if (parts.length !== 2) return null
+
+  const [cookieStoreId, phone] = parts
+  // 🔒 Verifica que a sessão pertence exatamente a este tenant
+  if (cookieStoreId !== storeId) return null
+
+  const customer = await prisma.customer.findUnique({
+    where: { storeId_phone: { storeId, phone } },
     include: {
       addresses: {
-        orderBy: [
-          { isDefault: 'desc' },
-          { createdAt: 'desc' }
-        ]
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }]
       }
     }
   })
-  return user
+  return customer
 }
 
-// ===== SAVE ADDRESS =====
 type AddressData = {
   label: string
   cep: string
@@ -70,17 +82,18 @@ type AddressData = {
   estado: string
 }
 
-export async function saveAddress(data: AddressData) {
-  try {
-    const user = await getSessionUser()
-    if (!user) return { success: false, error: 'Não autenticado.' }
+export async function saveAddress(data: AddressData, storeId?: string) {
+  if (!storeId) throw new Error('Tenant não identificado: storeId ausente em saveAddress')
 
-    // Se é o primeiro endereço, marca como default
-    const isFirst = user.addresses.length === 0
+  try {
+    const customer = await getSessionUser(storeId)
+    if (!customer) return { success: false, error: 'Sessão expirada.' }
+
+    const isFirst = customer.addresses.length === 0
 
     const address = await prisma.address.create({
       data: {
-        userId: user.id,
+        customerId: customer.id,
         label: data.label,
         cep: data.cep.replace(/\D/g, ''),
         rua: data.rua,
@@ -93,17 +106,15 @@ export async function saveAddress(data: AddressData) {
       }
     })
 
-    // Geocodifica em background (não bloqueia)
     geocodeAddress(address.id, data).catch(console.error)
 
     return { success: true, address }
   } catch (error) {
-    console.error("Erro ao salvar endereço", error)
+    console.error("[auth] Erro ao salvar endereço:", error instanceof Error ? error.message : 'Erro desconhecido')
     return { success: false, error: 'Erro ao salvar endereço.' }
   }
 }
 
-// Geocodifica e salva lat/lng no Address (cache)
 async function geocodeAddress(addressId: string, data: AddressData) {
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
   if (!mapboxToken) return
@@ -118,18 +129,14 @@ async function geocodeAddress(addressId: string, data: AddressData) {
     const geoData = await res.json()
     if (geoData.features?.length > 0) {
       const [lng, lat] = geoData.features[0].center
-      await prisma.address.update({
-        where: { id: addressId },
-        data: { lat, lng }
-      })
+      await prisma.address.update({ where: { id: addressId }, data: { lat, lng } })
     }
   } catch (err) {
-    console.error("Geocoding do endereço falhou", err)
+    console.error("[auth] Geocoding falhou:", err instanceof Error ? err.message : 'Erro desconhecido')
   }
 }
 
-// ===== LOGOUT =====
-export async function logout() {
+export async function logout(storeId: string) {
   const cookieStore = await cookies()
-  cookieStore.delete('session_phone')
+  cookieStore.delete(`session_token_${storeId}`)
 }

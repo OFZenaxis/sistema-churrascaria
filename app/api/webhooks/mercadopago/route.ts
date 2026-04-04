@@ -1,59 +1,10 @@
 import { NextResponse } from 'next/server';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { prisma } from '@/lib/prisma';
-import crypto from 'crypto';
 
 // ══════════════════════════════════════════════════════════════════
-// WEBHOOK MERCADO PAGO — COM VALIDAÇÃO DE ASSINATURA
+// WEBHOOK MERCADO PAGO — MULTI-TENANT (DEDICADO À CONSULTA DIRETA)
 // ══════════════════════════════════════════════════════════════════
-
-function validateWebhookSignature(req: Request, dataId: string): boolean {
-  const webhookSecret = process.env.MP_WEBHOOK_SECRET
-
-  // Sem secret configurado = aceita (dev mode)
-  if (!webhookSecret) {
-    console.warn('[WEBHOOK] ⚠️ MP_WEBHOOK_SECRET não configurado — validação desabilitada')
-    return true
-  }
-
-  const xSignature = req.headers.get('x-signature')
-  const xRequestId = req.headers.get('x-request-id')
-
-  // Se não tem headers de assinatura, aceita em dev com warning
-  if (!xSignature || !xRequestId) {
-    console.warn('[WEBHOOK] ⚠️ Headers x-signature/x-request-id ausentes (teste do painel MP?)')
-    return true
-  }
-
-  try {
-    const parts: Record<string, string> = {}
-    xSignature.split(',').forEach(part => {
-      const [key, ...rest] = part.split('=')
-      if (key && rest.length) parts[key.trim()] = rest.join('=').trim()
-    })
-
-    const ts = parts['ts']
-    const v1 = parts['v1']
-
-    if (!ts || !v1) {
-      console.warn('[WEBHOOK] ⚠️ Formato do x-signature incompleto')
-      return true // Não crashar em dev
-    }
-
-    const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`
-    const hmac = crypto.createHmac('sha256', webhookSecret).update(manifest).digest('hex')
-
-    if (hmac !== v1) {
-      console.error('[WEBHOOK] ❌ Assinatura HMAC inválida')
-      return false
-    }
-
-    return true
-  } catch (e) {
-    console.error('[WEBHOOK] Erro ao validar assinatura:', e)
-    return true // Não crashar por erro de parse
-  }
-}
 
 export async function POST(req: Request) {
   try {
@@ -61,78 +12,106 @@ export async function POST(req: Request) {
     const type = url.searchParams.get('type');
     const topic = url.searchParams.get('topic');
 
-    // Parse do body
-    let body: any = {}
+    // ── Resgatar a Identificação do Tenant Responsável da Loja ──
+    const storeId = url.searchParams.get('storeId');
+
+    // Parse do body payload
+    let body: any = {};
     try {
-      body = await req.json()
-    } catch {
-      // Body vazio ou inválido — OK para alguns pings do MP
+      body = await req.json();
+    } catch (err) {
+      // Se paymentId vier na URL (pings de teste do MP), continua normalmente.
+      // Se não houver paymentId em lugar nenhum, o guard !paymentId abaixo devolve 200 (ping bypass).
+      // Mas se o body está genuinamente corrompido, logamos para rastreabilidade.
+      console.error('[WEBHOOK] Erro no payload do Webhook MP:', err);
+      if (!url.searchParams.get('data.id')) {
+        return NextResponse.json({ error: 'Payload inválido' }, { status: 400 });
+      }
     }
 
     const paymentId = url.searchParams.get('data.id') || body?.data?.id;
 
     // ══════════════════════════════════════════════════════════════
-    // 🧪 BYPASS DE TESTE: O painel do MP manda data.id = "123456"
-    // Precisamos retornar 200 para ele validar a URL
+    // PING BYPASS: O painel do MP manda data.id="123456" para testar
+    // (Também aceitar pings de conexão sem dados de pagamento)
     // ══════════════════════════════════════════════════════════════
     if (!paymentId) {
-      console.log('[WEBHOOK] Ping recebido sem payment ID — retornando 200')
-      return NextResponse.json({ message: 'Webhook ativo' })
+      console.log(`[WEBHOOK] Ping ativo no sistema. Retornando 200 OK.`);
+      return NextResponse.json({ message: 'Webhook Recebido com sucesso.' });
     }
 
-    if (paymentId === '123456' || paymentId === 123456) {
-      console.log('[WEBHOOK] 🧪 Teste do painel MP recebido — retornando 200 OK')
-      return NextResponse.json({ message: 'Test OK' })
+    if (String(paymentId) === '123456') {
+      console.log('[WEBHOOK] 🧪 Teste simulado do Painel do MP recebido — retornando 200 OK');
+      return NextResponse.json({ message: 'Conexão Teste OK' });
     }
 
-    // 🔒 Validar assinatura (flexível em dev)
-    if (!validateWebhookSignature(req, String(paymentId))) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
-    // Processar apenas eventos de pagamento
-    const isPaymentEvent = type === 'payment' || topic === 'payment' || body?.action?.includes('payment')
+    // Processar apenas eventos focados em status de pagamentos
+    const isPaymentEvent = type === 'payment' || topic === 'payment' || body?.action?.includes('payment');
     
     if (!isPaymentEvent) {
-      console.log(`[WEBHOOK] Evento ignorado: type=${type}, topic=${topic}`)
-      return NextResponse.json({ message: 'Evento ignorado' })
+      console.log(`[WEBHOOK] Ignorado: evento não reflete um PIX/Cartão → type=${type}, topic=${topic}`);
+      return NextResponse.json({ message: 'Evento ignorado' });
     }
 
-    // ── Consultar pagamento real na API do MP ──
-    const access_token = process.env.MP_ACCESS_TOKEN;
+    // ── Se houver pagamento de verdade, A Loja dona desta notificação DEVE existir ──
+    if (!storeId) {
+      console.warn(`[WEBHOOK] Pagamento ${paymentId} ignorado pois falta query ?storeId na URL`);
+      return NextResponse.json({ message: 'Requerente Multi-tenant inválido' }, { status: 400 });
+    }
+
+    // Buscar credenciais da API específica da Loja
+    const storeData = await prisma.store.findUnique({
+      where: { id: storeId },
+      include: { paymentConfig: true },
+    });
+
+    const access_token = storeData?.paymentConfig?.mpAccessToken;
+
     if (!access_token) {
-      console.error('[WEBHOOK] MP_ACCESS_TOKEN ausente')
-      return NextResponse.json({ error: 'Config ausente' }, { status: 500 })
+      console.error(`[WEBHOOK] Falha crítica - Loja ${storeId} não possui Acesso Token MP Ativo, webhook perdido.`);
+      return NextResponse.json({ message: 'Credencial ausente no db' }, { status: 500 });
     }
 
+    // ── Validação por Consulta Ativa ──
+    // Usamos o SDK logado apenas com o token do respectivo Tenant
     try {
       const client = new MercadoPagoConfig({ accessToken: access_token });
       const paymentApi = new Payment(client);
       const paymentData = await paymentApi.get({ id: paymentId });
 
+      // Verificamos a referência e se a confirmação "approved" veio direto dos cofres do MP
       if (paymentData.status === 'approved' && paymentData.external_reference) {
-        await prisma.order.update({
+        
+        // Garante que o pedido validado realmente pertence à Loja requisitada
+        const relatedOrder = await prisma.order.findUnique({
           where: { id: paymentData.external_reference },
-          data: {
-            paymentStatus: 'PAID',
-            status: 'PREPARING'
-          }
+          select: { storeId: true }
         });
-        console.log(`[WEBHOOK] ✅ Pedido ${paymentData.external_reference} → PAID + PREPARING`)
+
+        if (relatedOrder?.storeId === storeId) {
+          await prisma.order.update({
+            where: { id: paymentData.external_reference },
+            data: {
+              paymentStatus: 'PAID',
+              status: 'PREPARING'
+            }
+          });
+          console.log(`[WEBHOOK | LOJA: ${storeData.name}] ✅ Pedido ${paymentData.external_reference} Pago e Em Preparo!`);
+        } else {
+          console.error(`[WEBHOOK | FRAUDE EVITADA] Pedido ${paymentData.external_reference} processado num MP de loja diferente!`);
+        }
       } else {
-        console.log(`[WEBHOOK] Pagamento ${paymentId}: status=${paymentData.status}`)
+        console.log(`[WEBHOOK] Pagamento ID: ${paymentId} / Status atual: ${paymentData.status}`);
       }
     } catch (mpError: any) {
-      // Se o pagamento não existe no MP (ID inválido, expirado, etc)
-      console.error(`[WEBHOOK] Erro ao consultar pagamento ${paymentId}:`, mpError?.message || mpError)
-      // Retorna 200 mesmo assim para o MP não reenviar infinitamente
-      return NextResponse.json({ message: 'Pagamento não encontrado, ignorado' })
+      console.error(`[WEBHOOK] Erro ao consultar pagamento diretamente na API MP: ${paymentId}:`, mpError?.message || mpError);
+      return NextResponse.json({ message: 'Pagamento fantasma ou não processável pelo Mercado Pago' });
     }
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    console.error('[WEBHOOK] Erro geral:', e?.message || e);
-    // Retorna 200 para evitar retentativas infinitas do MP
-    return NextResponse.json({ message: 'Erro processado' })
+    console.error('[WEBHOOK] Erro Sistêmico Geral:', e?.message || e);
+    // Retornar código de sucesso MP para barrar envios infinitos dele em caso de erro local crítico
+    return NextResponse.json({ message: 'Erro contornável do servidor processado e abafado.' });
   }
 }

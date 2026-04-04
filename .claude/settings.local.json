@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const p = require\\('./package.json'\\); console.log\\(JSON.stringify\\({...p.dependencies, ...p.devDependencies}, null, 2\\)\\)\")",
+      "Bash(node -e ':*)",
+      "Bash(npm install:*)",
+      "Bash(npx prisma:*)",
+      "Bash(find \"C:\\\\Users\\\\Coutadazz\\\\Desktop\\\\Projetos Cursor\\\\sistema-churrascaria\" -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec grep -h \"process\\\\.env\\\\.[A-Z_]*\" {} +)"
+    ]
+  }
+}

@@ -8,75 +8,161 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ======= USERS =======
+// ======= PLATFORM & SAAS =======
+enum SubscriptionTier {
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+model Store {
+  id           String  @id @default(uuid())
+  slug         String  @unique // Ex: "minha-churrascaria" (usado na URL)
+  customDomain String? @unique
+  name         String
+  document     String? // CNPJ/CPF
+
+  // Branding por Tenant
+  logoUrl       String?
+  coverImageUrl String?
+  brandColor    String  @default("#10b981")
+  themeId       String  @default("classic-light")
+  phone         String?
+  city          String?
+  tagline       String?
+
+  // SaaS Control
+  tier     SubscriptionTier @default(BASIC)
+  isActive Boolean          @default(true)
+
+  // Feature Flags
+  features Json? // Ex: { "kds": false, "gamification": false, "upsell": true }
+
+  isOpen     Boolean  @default(true)
+  kitchenPin String?  // PIN numérico para travar/destravar o KDS (por tenant)
+
+  // Configurações de Entrega por GPS
+  storeAddress       String? // Endereço completo para geocodificação
+  storeLat           Float?  // Latitude da loja (preenchida via Mapbox)
+  storeLng           Float?  // Longitude da loja (preenchida via Mapbox)
+  baseDeliveryFee    Float   @default(0)  // Taxa base independente da distância
+  deliveryFeePerKm   Float   @default(0)  // Acréscimo por KM rodado
+  maxDeliveryRadius  Float   @default(10) // Raio máximo de entrega em KM
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relações SaaS
+  paymentConfig StorePaymentConfig?
+  users         User[] // Staff
+  customers     Customer[] // End users
+  categories    Category[]
+  products      Product[]
+  orders        Order[]
+  deliveryZones DeliveryZone[]
+}
+
+model StorePaymentConfig {
+  id      String @id @default(uuid())
+  storeId String @unique
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  mpAccessToken      String?
+  mpPublicKey        String?
+  pixDiscountPercent Float?  @default(0)
+}
+
+// ======= STAFF (Lojistas, Gerentes, Motoboys, SuperAdmins) =======
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MANAGER
+  DRIVER
+}
+
 model User {
-  id        String   @id @default(uuid())
+  id      String  @id @default(uuid())
+  storeId String? // Opcional apenas para SUPER_ADMIN global
+  store   Store?  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  name     String
+  phone    String  @unique // Pode ser usado como login junto com senha
+  email    String? @unique
+  password String?
+  role     Role    @default(MANAGER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ======= CUSTOMERS (Clientes Finais) =======
+model Customer {
+  id      String @id @default(uuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
   name      String
-  phone     String   @unique
+  phone     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   orders    Order[]
   addresses Address[]
+
+  @@unique([storeId, phone]) // Um telefone só pode ter um cadastro único por loja
 }
 
 // ======= ADDRESSES =======
 model Address {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  label       String   @default("Casa") // "Casa", "Trabalho", "Outro"
+  label       String @default("Casa")
   cep         String
   rua         String
-  numero      String   // Obrigatório — motoboy precisa saber
-  complemento String   // Obrigatório — Lote, Quadra, etc.
+  numero      String
+  complemento String
   bairro      String
   cidade      String
   estado      String
 
-  // Cache de geocoding
-  lat         Float?
-  lng         Float?
+  lat Float?
+  lng Float?
 
-  isDefault   Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
 
-  orders      Order[]
+  orders Order[]
 }
 
 // ======= CATALOG =======
-enum ProductType {
-  CUT
-  SIDE
-  BEVERAGE
-  COMBO
-}
-
 model Category {
-  id        String   @id @default(uuid())
-  name      String
-  products  Product[]
+  id      String @id @default(uuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  name     String
+  products Product[]
 }
 
 model Product {
-  id          String   @id @default(uuid())
+  id      String @id @default(uuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
   name        String
   description String?
   price       Float
-  type        ProductType
   imageUrl    String?
 
-  // Controle de estoques/cardápio
-  isActive    Boolean   @default(true)
+  isActive Boolean @default(true)
+  maxSides Int?    @default(0)
 
-  // For combos: how many sides are allowed?
-  maxSides    Int?      @default(0)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
-  categoryId  String
-  category    Category  @relation(fields: [categoryId], references: [id])
-
-  orderItems  OrderItem[]
+  orderItems OrderItem[]
 }
 
 // ======= ORDERS =======
@@ -90,90 +176,86 @@ enum OrderStatus {
 }
 
 model Order {
-  id                    String      @id @default(uuid())
-  userId                String?
-  user                  User?       @relation(fields: [userId], references: [id])
-  customerName          String // Fallback if no user is registered
-  customerPhone         String
-  deliveryAddress       String?  // String formatada para exibição
+  id      String @id @default(uuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
-  // Referência ao Address salvo do cliente
-  addressId             String?
-  address               Address?    @relation(fields: [addressId], references: [id])
+  customerId      String?
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customerName    String
+  customerPhone   String
+  deliveryAddress String?
 
-  status                OrderStatus @default(PENDING)
-  totalAmount           Float
-  paymentMethod         String?     // 'PIX' | 'CARD' | 'CASH'
-  changeFor             Float?      // Troco para X (apenas se CASH)
-  paymentStatus         String?     // e.g., 'APPROVED', 'PENDING'
+  addressId String?
+  address   Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
 
-  // The differential feature requested by the user
-  estimatedDeliveryTime Int?        // Represented in minutes
+  status        OrderStatus @default(PENDING)
+  totalAmount   Float
+  paymentMethod String? // 'PIX' | 'CARD' | 'CASH'
+  changeFor     Float?
+  paymentStatus String?
 
-  driverLat             Float?      // GPS Latitude do motoboy
-  driverLng             Float?      // GPS Longitude do motoboy
-  customerLat           Float?      // GPS Latitude do destino
-  customerLng           Float?      // GPS Longitude do destino
+  estimatedDeliveryTime Int?
 
-  deliveryZoneId        String?
-  deliveryZone          DeliveryZone? @relation(fields: [deliveryZoneId], references: [id])
+  driverLat   Float?
+  driverLng   Float?
+  customerLat Float?
+  customerLng Float?
 
-  delivery              Delivery?
+  deliveryZoneId String?
+  deliveryZone   DeliveryZone? @relation(fields: [deliveryZoneId], references: [id], onDelete: SetNull)
 
-  items                 OrderItem[]
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  delivery Delivery?
+
+  items     OrderItem[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 }
 
 enum MeatDoneness {
-  RARE          // Mal passado
-  MEDIUM_RARE   // Ao ponto para mal
-  MEDIUM        // Ao ponto
-  MEDIUM_WELL   // Ao ponto para bem
-  WELL_DONE     // Bem passado
+  RARE
+  MEDIUM_RARE
+  MEDIUM
+  MEDIUM_WELL
+  WELL_DONE
 }
 
 model OrderItem {
-  id          String         @id @default(uuid())
-  orderId     String
-  order       Order          @relation(fields: [orderId], references: [id])
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  productId   String
-  product     Product        @relation(fields: [productId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
 
-  quantity    Int            @default(1)
-  unitPrice   Float
-
-  // Mandatory for Cuts
-  doneness    MeatDoneness?
-
-  // JSON to store selected sides for Combos (e.g. ["Arroz", "Fritas"])
-  comboSides  String?
+  quantity   Int           @default(1)
+  unitPrice  Float
+  doneness   MeatDoneness?
+  comboSides String?
 }
 
 // ======= LOGISTICS =======
 model DeliveryZone {
-  id          String   @id @default(uuid())
-  name        String   // e.g., "Centro", "Jardim Botânico"
-  fee         Float    // Delivery fee for this zone
+  id      String @id @default(uuid())
+  storeId String
+  store   Store  @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
-  orders      Order[]
+  name          String
+  fee           Float   @default(0)
+  estimatedTime String? // Ex: "30-40 min"
+  isActive      Boolean @default(true)
+
+  orders Order[]
 }
 
 model Delivery {
-  id          String   @id @default(uuid())
-  orderId     String   @unique
-  order       Order    @relation(fields: [orderId], references: [id])
+  id      String @id @default(uuid())
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   driverName  String
   driverPhone String?
 
-  dispatchedAt DateTime @default(now())
+  dispatchedAt DateTime  @default(now())
   deliveredAt  DateTime?
-}
-
-// ======= STORE SETTINGS =======
-model StoreSettings {
-  id     String  @id @default("singleton")
-  isOpen Boolean @default(true)
 }
