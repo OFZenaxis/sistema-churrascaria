@@ -61,15 +61,16 @@ export default async function Page({
 **É estritamente proibido criar arquivos `middleware.ts`.** O Next.js 16.2.1+ depreciou `middleware.ts` em favor de `proxy.ts`.
 
 - Toda lógica de interceptação, redirecionamento, rewrite e injeção de headers deve ficar **exclusivamente** em `proxy.ts` na raiz do projeto.
-- O arquivo `proxy.ts` deve exportar a função como `export function middleware(req: NextRequest)` e o objeto `export const config = { matcher: [...] }` — o runtime lê esses exports diretamente.
+- O arquivo `proxy.ts` deve exportar a função como `export function proxy(req: NextRequest)` (ou `export default`) e o objeto `export const config = { matcher: [...] }` — o runtime lê esses exports diretamente.
 - **Nunca crie `middleware.ts`** — se ambos existirem, o servidor crasha na inicialização.
+- **Nunca exporte a função como `middleware` dentro do `proxy.ts`** — o Next.js 16.2.1 exige o nome `proxy` ou default export.
 
 ```ts
 // proxy.ts — CORRETO (Next.js 16.2.1+)
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   // toda lógica de proxy/rewrite aqui
   return NextResponse.next()
 }
@@ -79,6 +80,7 @@ export const config = {
 }
 
 // middleware.ts — PROIBIDO — causa crash de inicialização no Next.js 16+
+// export function middleware(...) dentro do proxy.ts — PROIBIDO — erro de runtime
 ```
 
 ---
