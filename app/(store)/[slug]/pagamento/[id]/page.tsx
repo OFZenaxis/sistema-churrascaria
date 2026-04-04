@@ -28,9 +28,9 @@ export default async function PagamentoPage({
 
   if (!store || order.storeId !== store.id) notFound()
 
-  // Já pago — redireciona com o slug correto no path
+  // Já pago — redireciona para a tela de acompanhamento
   if (order.paymentStatus === 'approved' || order.paymentStatus === 'PAID') {
-    redirect(`/${slug}/pedido/${order.id}`)
+    redirect(`/pedido/${order.id}`)
   }
 
   // Busca credenciais do lojista no banco (isolado por tenant via storeId)

@@ -18,7 +18,7 @@ export default async function OrdersPage({ params }: { params: Promise<{ slug: s
   if (!store) notFound()
 
   const user = await getSessionUser(store.id)
-  if (!user) redirect(`/${slug}`)
+  if (!user) redirect('/')
 
   const activeOrders = await prisma.order.findMany({
     where: { customerId: user.id, storeId: store.id },

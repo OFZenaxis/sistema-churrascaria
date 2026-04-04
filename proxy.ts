@@ -15,17 +15,25 @@ export function proxy(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // 2. Proteção de Rotas Administrativas (Auth)
-  // Formato das rotas: /{slug}/admin e /{slug}/admin/login
+  // 2. Determina se é domínio raiz (marketing) ou tenant (subdomínio/custom domain)
+  //    — Calculado cedo para ser usado na proteção admin e no roteamento
+  const isRootDomain =
+    hostname === BASE_DOMAIN ||
+    hostname === `www.${BASE_DOMAIN}` ||  // www não é subdomínio de loja
+    hostname === 'localhost:3000' ||
+    hostname === 'localhost:3001'
+
+  // 3. Proteção de Rotas Administrativas (Auth)
+  //    No modelo subdomain, as rotas admin são /admin, /admin/cardapio, etc. (sem slug no path)
+  //    A proteção só se aplica a tenants (subdomínios ou domínios customizados)
   const segments = pathname.split('/').filter(Boolean)
-  const urlSlug = segments[0] ?? ''
-  const isAdminRoute = segments.length >= 2 && segments[1] === 'admin'
-  const isAdminLoginRoute = segments.length >= 3 && segments[1] === 'admin' && segments[2] === 'login'
+  const isAdminRoute = !isRootDomain && segments[0] === 'admin'
+  const isAdminLoginRoute = isAdminRoute && segments[1] === 'login'
 
   if (isAdminRoute && !isAdminLoginRoute) {
     // 🔒 Cookie isolado por tenant: lojista_token_{storeId}
-    // No middleware não temos o storeId (UUID), então verificamos a presença de qualquer cookie
-    // do padrão lojista_token_* — a validação completa ocorre no layout do admin via HMAC.
+    // No proxy não temos o storeId (UUID), verificamos qualquer cookie do padrão lojista_token_*
+    // A validação completa (HMAC + storeId) ocorre no layout do admin.
     const hasAdminSession = req.cookies.getAll().some(c => c.name.startsWith('lojista_token_'))
 
     if (!hasAdminSession) {
@@ -33,12 +41,12 @@ export function proxy(req: NextRequest) {
       if (pathname.startsWith('/api/')) {
         return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
       }
-      // Se é página, redireciona para o login do tenant correto
-      return NextResponse.redirect(new URL(`/${urlSlug}/admin/login`, req.url))
+      // Redireciona para /admin/login no mesmo subdomínio (sem slug no path)
+      return NextResponse.redirect(new URL('/admin/login', req.url))
     }
   }
 
-  // 3. Injetar x-store-domain para APIs e pular o Rewrite estrutural das pastas
+  // 4. Injetar x-store-domain para APIs e pular o Rewrite estrutural das pastas
   // Nossas APIs não estão dentro de (marketing) nem (store), ficam livres e dependem do header
   if (pathname.startsWith('/api/')) {
     const response = NextResponse.next()
@@ -46,16 +54,11 @@ export function proxy(req: NextRequest) {
     return response
   }
 
-  // 4. Roteamento Multi-Tenant (Domínios e Route Groups)
+  // 5. Roteamento Multi-Tenant (Domínios e Route Groups)
   //    — Domínio raiz: marketing site (app/(marketing))
   //    — www.BASE_DOMAIN: alias do raiz; sem rewrite, Next.js serve marketing naturalmente
   //    — subdomínio.BASE_DOMAIN: loja do tenant → rewrite para /subdomínio
   //    — qualquer outro host: domínio customizado → rewrite para /host
-  const isRootDomain =
-    hostname === BASE_DOMAIN ||
-    hostname === `www.${BASE_DOMAIN}` ||  // www não é subdomínio de loja
-    hostname === 'localhost:3000' ||
-    hostname === 'localhost:3001'
 
   if (isRootDomain) {
     // Route Groups são invisíveis — Next.js resolve app/(marketing)/page.tsx como '/' naturalmente

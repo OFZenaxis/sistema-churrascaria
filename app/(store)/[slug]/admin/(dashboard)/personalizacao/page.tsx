@@ -20,7 +20,7 @@ export default async function PersonalizacaoPage({
   if (!store) notFound()
 
   const session = await getLojistaSession(store.id)
-  if (!session || session.storeId !== store.id) redirect(`/${slug}/admin/login`)
+  if (!session || session.storeId !== store.id) redirect('/admin/login')
 
   return (
     <div className="p-8">

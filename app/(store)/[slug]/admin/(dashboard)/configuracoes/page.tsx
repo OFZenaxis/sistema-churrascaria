@@ -32,7 +32,7 @@ export default async function ConfiguracoesPage({
 
   const session = await getLojistaSession(store.id)
   if (!session || session.storeId !== store.id) {
-    redirect(`/${slug}/admin/login`)
+    redirect('/admin/login')
   }
 
   return (

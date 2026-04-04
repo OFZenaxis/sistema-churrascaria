@@ -382,9 +382,9 @@ export default function MenuComponent({ products, isStoreOpen = true, storeId, s
       setIsCheckoutOpen(false)
 
       if (paymentMethod === 'PIX' || paymentMethod === 'CARD_ONLINE') {
-        router.push(`/${slug}/pagamento/${res.orderId}?method=${paymentMethod}`)
+        router.push(`/pagamento/${res.orderId}?method=${paymentMethod}`)
       } else {
-        router.push(`/${slug}/pedido/${res.orderId}`)
+        router.push(`/pedido/${res.orderId}`)
       }
     } else {
       setCheckoutError(res.error || 'Erro ao processar pedido.')
@@ -561,7 +561,7 @@ export default function MenuComponent({ products, isStoreOpen = true, storeId, s
       <BottomNav
         cartCount={cartCount}
         onCartClick={openCheckout}
-        onAccountClick={() => isLoggedIn ? router.push(`/${slug}/orders`) : setIsLoginOpen(true)}
+        onAccountClick={() => isLoggedIn ? router.push('/orders') : setIsLoginOpen(true)}
         slug={slug}
         brandColor={brandColor}
         phoneBg={phoneBg}

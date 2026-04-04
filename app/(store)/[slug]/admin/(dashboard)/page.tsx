@@ -138,10 +138,10 @@ export default async function AdminDashboardPage({
     where: tenantWhere(slug),
     select: { id: true, name: true, isOpen: true, brandColor: true }
   })
-  if (!store) redirect(`/${slug}/admin/login`)
+  if (!store) redirect('/admin/login')
 
   const session = await getLojistaSession(store.id)
-  if (!session || session.storeId !== store.id) redirect(`/${slug}/admin/login`)
+  if (!session || session.storeId !== store.id) redirect('/admin/login')
 
   const brandColor = store.brandColor ?? '#10b981'
 

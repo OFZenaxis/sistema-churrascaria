@@ -68,7 +68,7 @@ export default function OrdersClient({ orders: initialOrders, slug, storeId, sto
   const handleLogout = () => {
     startTransition(async () => {
       await logout(storeId)
-      router.push(`/${slug}`)
+      router.push('/')
     })
   }
 
@@ -125,7 +125,7 @@ export default function OrdersClient({ orders: initialOrders, slug, storeId, sto
       {/* ── Header ── */}
       <div className="px-4 pt-6 pb-4 flex items-center gap-3 border-b" style={{ borderColor: border }}>
         <button
-          onClick={() => router.push(`/${slug}`)}
+          onClick={() => router.push('/')}
           className="w-9 h-9 flex items-center justify-center rounded-full shrink-0"
           style={{ background: subtleBg, color: phoneSubText }}
         >
@@ -395,7 +395,7 @@ export default function OrdersClient({ orders: initialOrders, slug, storeId, sto
             <p className="text-3xl mb-3">🛍️</p>
             <p className="font-bold" style={{ color: phoneSubText }}>Nenhum pedido ainda.</p>
             <button
-              onClick={() => router.push(`/${slug}`)}
+              onClick={() => router.push('/')}
               className="mt-4 font-bold text-sm underline"
               style={{ color: brandColor }}
             >

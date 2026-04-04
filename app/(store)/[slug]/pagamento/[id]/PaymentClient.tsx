@@ -52,7 +52,7 @@ export default function PaymentClient({ orderId, slug, amount, pubKey, method, c
         if (data.status === 'approved' || data.status === 'in_process' || data.status === 'pending') {
           resolve(data)
           // Se gerou Pix "pending" ou cartão "approved", manda pra tela de acompanhamento
-          router.push(`/${slug}/pedido/${orderId}`)
+          router.push(`/pedido/${orderId}`)
         } else {
           reject(data)
         }

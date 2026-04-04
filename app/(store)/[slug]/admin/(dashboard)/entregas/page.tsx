@@ -30,7 +30,7 @@ export default async function EntregasPage({
 
   const session = await getLojistaSession(store.id)
   if (!session || session.storeId !== store.id) {
-    redirect(`/${slug}/admin/login`)
+    redirect('/admin/login')
   }
 
   return (

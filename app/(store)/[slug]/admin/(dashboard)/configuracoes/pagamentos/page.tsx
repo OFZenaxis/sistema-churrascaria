@@ -20,7 +20,7 @@ export default async function PagamentosConfigPage({
   if (!store) notFound()
 
   const session = await getLojistaSession(store.id)
-  if (!session || session.storeId !== store.id) redirect(`/${slug}/admin/login`)
+  if (!session || session.storeId !== store.id) redirect('/admin/login')
 
   const config = await prisma.storePaymentConfig.findUnique({
     where: { storeId: store.id },

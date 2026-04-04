@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
   UtensilsCrossed,
@@ -30,27 +30,26 @@ export default function AdminSidebar({
   logoUrl: string | null
 }) {
   const pathname = usePathname()
-  const router = useRouter()
   const { isCollapsed, setIsCollapsed } = useSidebar()
 
   const isActive = (href: string) => {
     // Exact-match routes (children would otherwise falsely activate the parent)
-    if (href === `/${slug}/admin`) return pathname === `/${slug}/admin`
-    if (href === `/${slug}/admin/configuracoes`) return pathname === `/${slug}/admin/configuracoes`
+    if (href === '/admin') return pathname === '/admin'
+    if (href === '/admin/configuracoes') return pathname === '/admin/configuracoes'
     return pathname.startsWith(href)
   }
 
   const navItems = [
-    { href: `/${slug}/admin`,              label: 'Visão Geral',   icon: LayoutDashboard },
-    { href: `/${slug}/admin/cardapio`,     label: 'Cardápio',      icon: UtensilsCrossed },
-    { href: `/${slug}/admin/kds`,          label: 'KDS / Cozinha', icon: ChefHat },
-    { href: `/${slug}/admin/entregas`,     label: 'Entregas',      icon: Bike },
+    { href: '/admin',          label: 'Visão Geral',   icon: LayoutDashboard },
+    { href: '/admin/cardapio', label: 'Cardápio',      icon: UtensilsCrossed },
+    { href: '/admin/kds',      label: 'KDS / Cozinha', icon: ChefHat },
+    { href: '/admin/entregas', label: 'Entregas',      icon: Bike },
   ]
 
   const bottomItems = [
-    { href: `/${slug}/admin/personalizacao`,           label: 'Personalização', icon: Palette },
-    { href: `/${slug}/admin/configuracoes/pagamentos`, label: 'Pagamentos',     icon: CreditCard },
-    { href: `/${slug}/admin/configuracoes`,            label: 'Configurações',  icon: Settings },
+    { href: '/admin/personalizacao',           label: 'Personalização', icon: Palette },
+    { href: '/admin/configuracoes/pagamentos', label: 'Pagamentos',     icon: CreditCard },
+    { href: '/admin/configuracoes',            label: 'Configurações',  icon: Settings },
   ]
 
   const handleLogout = async () => {

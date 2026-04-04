@@ -28,10 +28,10 @@ export default async function AdminDashboardLayout({
   try {
     session = await getLojistaSession(store.id)
   } catch {
-    redirect(`/${slug}/admin/login`)
+    redirect('/admin/login')
   }
   if (!session || session.storeId !== store.id) {
-    redirect(`/${slug}/admin/login`)
+    redirect('/admin/login')
   }
 
   return (
