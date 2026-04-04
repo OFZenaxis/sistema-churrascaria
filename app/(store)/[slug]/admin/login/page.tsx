@@ -1,13 +1,11 @@
 "use client"
 
 import React, { useState } from 'react'
-import { motion } from 'framer-motion'
-import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react'
+import { Flame, Mail, Lock, ArrowRight, Loader2, AlertCircle } from 'lucide-react'
 import { loginLojista } from '@/app/actions/adminAuth'
-import { useRouter, useParams } from 'next/navigation'
+import { useParams } from 'next/navigation'
 
 export default function AdminLogin() {
-  const router = useRouter()
   const params = useParams<{ slug: string }>()
   const slug = params?.slug || ''
 
@@ -16,8 +14,11 @@ export default function AdminLogin() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const canSubmit = email.trim().length > 0 && password.length >= 6
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!canSubmit || isLoading) return
     setIsLoading(true)
     setError('')
 
@@ -25,82 +26,95 @@ export default function AdminLogin() {
     setIsLoading(false)
 
     if (res.success) {
-      const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
-      window.location.href = `https://${slug}.${BASE_DOMAIN}/admin`
+      window.location.href = '/admin'
     } else {
-      setError(res.error || 'Erro desconhecido')
+      setError(res.error || 'Credenciais inválidas. Tente novamente.')
       setPassword('')
     }
   }
 
-  const canSubmit = email.trim().length > 0 && password.length >= 8
-
   return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-[#111] border border-zinc-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden"
-      >
-        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/2" />
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
 
-        <div className="relative z-10 flex flex-col items-center mb-8">
-          <div className="w-16 h-16 bg-emerald-500/20 border border-emerald-500/30 rounded-2xl flex items-center justify-center mb-4">
-            <Lock className="w-8 h-8 text-emerald-500" />
+        {/* Marca */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-14 h-14 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 mb-4">
+            <Flame className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-3xl font-black text-white px-2">Acesso Restrito</h1>
-          <p className="text-zinc-500 font-medium text-sm mt-2">Entre com as credenciais da sua loja</p>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">Painel do Lojista</h1>
+          <p className="text-slate-500 text-sm mt-1">Entre com suas credenciais para continuar</p>
         </div>
 
-        <form onSubmit={handleLogin} className="relative z-10 space-y-4">
-          <div>
-            <label className="block text-zinc-400 font-bold mb-2 text-sm ml-1">E-mail</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu@email.com"
-                autoComplete="email"
-                className="w-full bg-[#151515] border border-zinc-800 text-white rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:border-emerald-500 transition-colors"
-                autoFocus
-              />
-            </div>
-          </div>
+        {/* Card */}
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8">
 
-          <div>
-            <label className="block text-zinc-400 font-bold mb-2 text-sm ml-1">Senha</label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                autoComplete="current-password"
-                className="w-full bg-[#151515] border border-zinc-800 text-white rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:border-emerald-500 transition-colors font-mono tracking-widest text-lg"
-              />
-            </div>
-          </div>
-
+          {/* Banner de erro */}
           {error && (
-            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-rose-500 text-sm font-bold text-center">
-              {error}
-            </motion.p>
+            <div className="flex items-start gap-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl px-4 py-3 mb-6">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <p className="text-sm font-semibold">{error}</p>
+            </div>
           )}
 
-          <button
-            type="submit"
-            disabled={isLoading || !canSubmit}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition-all text-white font-black text-lg py-4 rounded-2xl shadow-[0_0_30px_rgba(16,185,129,0.2)] disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
-          >
-            {isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : (
-              <>ENTRAR <ArrowRight className="w-5 h-5" /></>
-            )}
-          </button>
-        </form>
-      </motion.div>
+          <form onSubmit={handleLogin} className="space-y-5">
+
+            {/* E-mail */}
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1.5 ml-1">
+                E-mail
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="seu@email.com"
+                  autoComplete="email"
+                  autoFocus
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 text-sm font-medium focus:outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Senha */}
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1.5 ml-1">
+                Senha
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 text-sm font-medium focus:outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Botão */}
+            <button
+              type="submit"
+              disabled={isLoading || !canSubmit}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed transition-all text-white font-black text-sm py-3.5 rounded-xl shadow-md shadow-emerald-500/20 mt-2"
+            >
+              {isLoading
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <>Entrar <ArrowRight className="w-4 h-4" /></>
+              }
+            </button>
+
+          </form>
+        </div>
+
+        <p className="text-center text-xs text-slate-400 mt-6">
+          Saiu Delivery · Painel Administrativo
+        </p>
+      </div>
     </div>
   )
 }
