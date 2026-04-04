@@ -119,6 +119,7 @@ async function LiveMenu({ params }: { params: Promise<{ slug: string }> }) {
             slug={slug}
             storeTheme={storeTheme}
             isLoggedIn={!!user}
+            logoUrl={store.logoUrl}
           />
         </main>
       </div>

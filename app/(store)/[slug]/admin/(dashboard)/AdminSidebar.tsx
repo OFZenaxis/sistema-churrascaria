@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState } from 'react'
 import {
   LayoutDashboard,
   UtensilsCrossed,
@@ -14,6 +15,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Palette,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { logoutLojista } from '@/app/actions/adminAuth'
 import { useSidebar } from './SidebarContext'
@@ -31,6 +34,13 @@ export default function AdminSidebar({
 }) {
   const pathname = usePathname()
   const { isCollapsed, setIsCollapsed } = useSidebar()
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(window.location.origin)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const isActive = (href: string) => {
     // Exact-match routes (children would otherwise falsely activate the parent)
@@ -151,6 +161,27 @@ export default function AdminSidebar({
             </Link>
           )
         })}
+
+        {/* Copiar link da loja */}
+        <button
+          onClick={handleCopyLink}
+          title={isCollapsed ? 'Copiar link da loja' : undefined}
+          className={`w-full flex items-center rounded-xl transition-colors group ${
+            copied
+              ? 'text-emerald-600 bg-emerald-50'
+              : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+          } ${isCollapsed ? 'justify-center p-3' : 'gap-3 px-3 py-2.5'}`}
+        >
+          {copied
+            ? <Check className={`shrink-0 text-emerald-500 ${isCollapsed ? 'w-5 h-5' : 'w-4 h-4'}`} />
+            : <Copy className={`shrink-0 text-slate-400 group-hover:text-slate-600 transition-colors ${isCollapsed ? 'w-5 h-5' : 'w-4 h-4'}`} />
+          }
+          {!isCollapsed && (
+            <span className="text-sm font-bold truncate">
+              {copied ? 'Link copiado!' : 'Copiar link da loja'}
+            </span>
+          )}
+        </button>
 
         {/* Logout */}
         <button

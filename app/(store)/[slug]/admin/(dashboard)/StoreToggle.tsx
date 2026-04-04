@@ -27,39 +27,46 @@ export default function StoreToggle({
   }
 
   return (
-    <div className={`inline-flex items-center gap-4 bg-white border rounded-2xl p-2.5 pr-5 shadow-sm transition-colors ${
-      open ? 'border-emerald-100 shadow-emerald-500/5' : 'border-slate-200 shadow-slate-500/5'
-    }`}>
-      <button
-        onClick={handle}
-        disabled={loading}
-        title={open ? 'Pausar Loja' : 'Abrir Loja'}
-        className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500/50 disabled:opacity-50 ${
+    <button
+      onClick={handle}
+      disabled={loading}
+      title={open ? 'Pausar loja' : 'Abrir loja'}
+      className={`
+        inline-flex items-center gap-3 rounded-2xl px-4 py-2.5 border transition-all duration-200
+        disabled:opacity-60 disabled:cursor-not-allowed
+        ${open
+          ? 'bg-emerald-50 border-emerald-200 shadow-sm shadow-emerald-500/10'
+          : 'bg-slate-50 border-slate-200'}
+      `}
+    >
+      {/* Track */}
+      <span
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${
           open ? 'bg-emerald-500' : 'bg-slate-300'
         }`}
       >
-        <span className="sr-only">Toggle store status</span>
+        {/* Thumb */}
         <span
-          className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out flex flex-col items-center justify-center ${
-            open ? 'translate-x-7' : 'translate-x-1'
+          className={`absolute flex items-center justify-center h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${
+            open ? 'translate-x-[22px]' : 'translate-x-[2px]'
           }`}
         >
-          {loading ? (
-             <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
-          ) : (
-            <Power className={`w-3 h-3 ${open ? 'text-emerald-500' : 'text-slate-400'}`} strokeWidth={3} />
-          )}
+          {loading
+            ? <Loader2 className="w-3 h-3 animate-spin text-slate-400" />
+            : <Power className={`w-3 h-3 ${open ? 'text-emerald-500' : 'text-slate-400'}`} strokeWidth={3} />
+          }
         </span>
-      </button>
+      </span>
 
-      <div className="flex flex-col text-left">
-        <span className={`text-sm font-black tracking-tight leading-none mb-1 ${open ? 'text-emerald-700' : 'text-slate-700'}`}>
+      {/* Label */}
+      <span className="flex flex-col text-left leading-none gap-0.5">
+        <span className={`text-sm font-black tracking-tight ${open ? 'text-emerald-700' : 'text-slate-600'}`}>
           {open ? 'Loja Aberta' : 'Loja Fechada'}
         </span>
-        <span className={`text-[10px] uppercase tracking-widest font-bold leading-none ${open ? 'text-emerald-500/80' : 'text-slate-400'}`}>
+        <span className={`text-[10px] font-bold uppercase tracking-widest ${open ? 'text-emerald-500' : 'text-slate-400'}`}>
           {open ? 'Recebendo pedidos' : 'Pausada'}
         </span>
-      </div>
-    </div>
+      </span>
+    </button>
   )
 }

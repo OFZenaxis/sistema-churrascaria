@@ -204,7 +204,7 @@ function ProductList({ items, hotIds, isStoreOpen, openProductModal, storeTheme 
 }
 
 // ─── Main Component ──────────────────────────────────────────────
-export default function MenuComponent({ products, isStoreOpen = true, storeId, slug, storeTheme = DEFAULT_THEME, isLoggedIn = false }: { products: Product[], isStoreOpen?: boolean, storeId: string, slug: string, storeTheme?: StoreTheme, isLoggedIn?: boolean }) {
+export default function MenuComponent({ products, isStoreOpen = true, storeId, slug, storeTheme = DEFAULT_THEME, isLoggedIn = false, logoUrl }: { products: Product[], isStoreOpen?: boolean, storeId: string, slug: string, storeTheme?: StoreTheme, isLoggedIn?: boolean, logoUrl?: string | null }) {
   const { brandColor, phoneBg, phoneCard, phoneText, phoneSubText, phoneBorderRadius, layoutStyle, fontFamily } = storeTheme
   const router = useRouter()
 
@@ -427,13 +427,18 @@ export default function MenuComponent({ products, isStoreOpen = true, storeId, s
       {!isStoreOpen && (
         <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm text-center px-8">
           <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex flex-col items-center gap-5">
-            <div className="w-20 h-20 rounded-full flex items-center justify-center border" style={{ background: phoneBg, borderColor: phoneSubText + '33' }}>
-              <Flame className="w-10 h-10" style={{ color: phoneSubText }} />
+            <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-white/20 shadow-xl bg-white flex items-center justify-center shrink-0">
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt="Logo da loja" className="w-full h-full object-contain p-1" />
+              ) : (
+                <Flame className="w-10 h-10" style={{ color: brandColor }} />
+              )}
             </div>
             <h2 className="text-3xl font-black uppercase" style={{ color: '#fff' }}>Loja Fechada</h2>
             <p className="text-sm max-w-xs" style={{ color: '#ffffff99' }}>Estamos indisponíveis no momento. Voltamos em breve!</p>
-            <div className="rounded-2xl px-5 py-2.5 border" style={{ background: phoneBg + 'dd', borderColor: phoneSubText + '33' }}>
-              <p className="font-bold text-xs uppercase tracking-wider" style={{ color: phoneSubText }}>Fora do horário de atendimento</p>
+            <div className="rounded-2xl px-5 py-2.5" style={{ backgroundColor: brandColor }}>
+              <p className="font-bold text-xs uppercase tracking-wider text-white">Fora do horário de atendimento</p>
             </div>
           </motion.div>
         </div>

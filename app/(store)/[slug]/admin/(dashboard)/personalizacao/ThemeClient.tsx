@@ -324,9 +324,6 @@ export default function ThemeClient({ initial, storeName }: Props) {
               </div>
             )}
 
-            <p className="text-[10px] text-slate-400 leading-relaxed font-medium">
-              O upload para o servidor será ativado após a configuração do bucket. Por enquanto, a prévia é local.
-            </p>
           </div>
 
           {/* Feedback */}

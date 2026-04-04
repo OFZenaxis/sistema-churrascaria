@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useTransition, useEffect, useMemo } from 'react'
+import { useState, useTransition, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   MapPin, Navigation, Bike, CircleDollarSign, Ruler,
-  Loader2, CheckCircle2, AlertTriangle, Info,
+  Loader2, CheckCircle2, AlertTriangle, Info, Search,
 } from 'lucide-react'
 import { saveDeliverySettings } from '@/app/actions/admin'
 
@@ -106,7 +106,22 @@ export default function ZonasClient({
   storeId: string
   initial: DeliveryConfig
 }) {
-  const [address, setAddress]       = useState(initial.storeAddress)
+  // ── Campos estruturados de endereço (ViaCEP) ────────────────────────────
+  const [cep,        setCep]        = useState('')
+  const [logradouro, setLogradouro] = useState('')
+  const [numero,     setNumero]     = useState('')
+  const [bairro,     setBairro]     = useState('')
+  const [cidade,     setCidade]     = useState('')
+  const [uf,         setUf]         = useState('')
+  const [cepLoading, setCepLoading] = useState(false)
+  const [cepError,   setCepError]   = useState('')
+  const numeroRef = useRef<HTMLInputElement>(null)
+
+  // Endereço final montado dos campos (enviado ao Mapbox para geocodificar)
+  const assembledAddress = [logradouro, numero, bairro, cidade, uf]
+    .filter(Boolean)
+    .join(', ')
+
   const [baseFeeInput, setBaseFee]  = useState(initial.baseDeliveryFee  === 0 ? '' : String(initial.baseDeliveryFee))
   const [perKmInput,   setPerKm]    = useState(initial.deliveryFeePerKm === 0 ? '' : String(initial.deliveryFeePerKm))
   const [radiusInput,  setRadius]   = useState(String(initial.maxDeliveryRadius))
@@ -119,6 +134,40 @@ export default function ZonasClient({
   const [errorMsg,    setErrorMsg]   = useState<string | null>(null)
   const [geocodeWarn, setGeocodeWarn] = useState<string | null>(null)
   const [pending,     startTransition] = useTransition()
+
+  // ── ViaCEP: dispara ao preencher 8 dígitos ───────────────────────────────
+  const handleCepChange = async (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 8)
+    // Formata visualmente: 00000-000
+    const formatted = digits.length > 5
+      ? `${digits.slice(0, 5)}-${digits.slice(5)}`
+      : digits
+    setCep(formatted)
+    setCepError('')
+
+    if (digits.length === 8) {
+      setCepLoading(true)
+      try {
+        const res  = await fetch(`https://viacep.com.br/ws/${digits}/json/`)
+        const data = await res.json()
+        if (data.erro) {
+          setCepError('CEP não encontrado. Verifique e tente novamente.')
+          setLogradouro(''); setBairro(''); setCidade(''); setUf('')
+        } else {
+          setLogradouro(data.logradouro ?? '')
+          setBairro(data.bairro ?? '')
+          setCidade(data.localidade ?? '')
+          setUf(data.uf ?? '')
+          // Foca no campo Número após preenchimento automático
+          setTimeout(() => numeroRef.current?.focus(), 80)
+        }
+      } catch {
+        setCepError('Falha ao consultar o CEP. Verifique sua conexão.')
+      } finally {
+        setCepLoading(false)
+      }
+    }
+  }
 
   // ── Raio com debounce para o mapa atualizar suavemente ao digitar ──────────
   // O-05: debounce atualiza apenas estado local (sem requisição em flight);
@@ -144,9 +193,13 @@ export default function ZonasClient({
 
     if (maxDeliveryRadius <= 0) { setErrorMsg('O raio máximo deve ser maior que zero.'); return }
 
+    // Usa o endereço montado dos campos estruturados, com fallback para o salvo anteriormente
+    const storeAddress = assembledAddress || initial.storeAddress
+    if (!storeAddress.trim()) { setErrorMsg('Preencha o endereço da loja antes de salvar.'); return }
+
     startTransition(async () => {
       const result = await saveDeliverySettings(
-        { storeAddress: address, baseDeliveryFee, deliveryFeePerKm, maxDeliveryRadius },
+        { storeAddress, baseDeliveryFee, deliveryFeePerKm, maxDeliveryRadius },
         storeId
       )
       if (!result.success) { setSaveStatus('error'); setErrorMsg(result.error ?? 'Erro desconhecido.'); return }
@@ -176,25 +229,122 @@ export default function ZonasClient({
         </div>
 
         <div className="px-6 py-5 space-y-4">
-          {/* Endereço */}
+
+          {/* Endereço atual salvo (referência visual) */}
+          {initial.storeAddress && !assembledAddress && (
+            <div className="flex items-start gap-2.5 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+              <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                <span className="font-bold text-slate-600">Atual:</span> {initial.storeAddress}
+              </p>
+            </div>
+          )}
+
+          {/* ── CEP ─────────────────────────────────────────────────── */}
           <div>
             <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
-              Endereço Completo
+              CEP
             </label>
-            <p className="text-xs text-slate-400 mb-2">
-              Ex: Rua das Acácias, 320, Centro, Aparecida de Goiânia, GO, Brasil
-            </p>
-            <div className="relative">
-              <MapPin className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
-              <textarea
-                value={address}
-                onChange={e => setAddress(e.target.value)}
-                rows={2}
-                placeholder="Rua, número, bairro, cidade, estado..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition-all resize-none"
+            <div className="relative max-w-[180px]">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={cep}
+                onChange={e => handleCepChange(e.target.value)}
+                placeholder="00000-000"
+                maxLength={9}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-10 py-3 text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+              />
+              {cepLoading && (
+                <Loader2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500 animate-spin" />
+              )}
+            </div>
+            {cepError && (
+              <p className="mt-1.5 text-xs text-rose-500 font-semibold">{cepError}</p>
+            )}
+          </div>
+
+          {/* ── Logradouro + Número ───────────────────────────────── */}
+          <div className="grid grid-cols-[1fr_100px] gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Logradouro
+              </label>
+              <input
+                type="text"
+                value={logradouro}
+                onChange={e => setLogradouro(e.target.value)}
+                placeholder="Rua, Avenida, Travessa..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Número
+              </label>
+              <input
+                ref={numeroRef}
+                type="text"
+                inputMode="numeric"
+                value={numero}
+                onChange={e => setNumero(e.target.value)}
+                placeholder="320"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition-all"
               />
             </div>
           </div>
+
+          {/* ── Bairro ───────────────────────────────────────────── */}
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+              Bairro
+            </label>
+            <input
+              type="text"
+              value={bairro}
+              onChange={e => setBairro(e.target.value)}
+              placeholder="Centro"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+            />
+          </div>
+
+          {/* ── Cidade + UF ──────────────────────────────────────── */}
+          <div className="grid grid-cols-[1fr_80px] gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Cidade
+              </label>
+              <input
+                type="text"
+                value={cidade}
+                onChange={e => setCidade(e.target.value)}
+                placeholder="Aparecida de Goiânia"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
+                UF
+              </label>
+              <input
+                type="text"
+                value={uf}
+                onChange={e => setUf(e.target.value.toUpperCase().slice(0, 2))}
+                placeholder="GO"
+                maxLength={2}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 transition-all uppercase"
+              />
+            </div>
+          </div>
+
+          {/* Endereço montado (preview) */}
+          {assembledAddress && (
+            <div className="flex items-start gap-2.5 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">
+              <MapPin className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-emerald-800 font-semibold leading-relaxed">{assembledAddress}</p>
+            </div>
+          )}
 
           {/* Status das coordenadas */}
           <AnimatePresence mode="wait">
