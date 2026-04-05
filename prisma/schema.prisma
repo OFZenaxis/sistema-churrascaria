@@ -287,3 +287,12 @@ model Delivery {
   dispatchedAt DateTime  @default(now())
   deliveredAt  DateTime?
 }
+
+// ======= MARKETING / LEADS =======
+model PartialLead {
+  id        String   @id @default(uuid())
+  name      String?
+  email     String?
+  phone     String?
+  createdAt DateTime @default(now())
+}

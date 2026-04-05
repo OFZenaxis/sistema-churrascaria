@@ -1,6 +1,7 @@
 "use server"
 
 import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { signPayload, verifyPayload } from '@/lib/session'
 import { logger } from '@/lib/logger'
@@ -145,4 +146,22 @@ async function geocodeAddress(addressId: string, data: AddressData): Promise<boo
 export async function logout(storeId: string) {
   const cookieStore = await cookies()
   cookieStore.delete(`session_token_${storeId}`)
+}
+
+export async function findStoreByEmail(email: string): Promise<{ error: string } | never> {
+  const trimmed = email.trim().toLowerCase()
+
+  const user = await prisma.user.findFirst({
+    where: { email: trimmed },
+    select: { store: { select: { slug: true } } },
+  })
+
+  if (!user?.store?.slug) {
+    return { error: 'Nenhuma loja encontrada com este e-mail.' }
+  }
+
+  const baseDomain = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
+  const loginUrl = `https://${user.store.slug}.${baseDomain}/admin/login?email=${encodeURIComponent(trimmed)}`
+
+  redirect(loginUrl)
 }
