@@ -1,6 +1,7 @@
 "use client"
 
 import React from 'react'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { Plus } from 'lucide-react'
 import type { Product, StoreTheme } from './MenuComponent'
@@ -53,7 +54,7 @@ export default function ProductCard({
         style={{ background: brandColor + '15', borderColor: border }}
       >
         {product.imageUrl ? (
-          <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+          <Image src={product.imageUrl} alt={product.name} fill sizes="100px" className="object-cover" />
         ) : (
           <span className="text-[44px] leading-none select-none" style={{ opacity: 0.25, filter: 'grayscale(1)' }}>🍽️</span>
         )}
@@ -93,7 +94,7 @@ export default function ProductCard({
       {/* Botão '+' */}
       <div className="absolute bottom-3 right-3">
         <button
-          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+          className={`w-11 h-11 rounded-full flex items-center justify-center transition-all ${
             isStoreOpen ? 'text-white active:scale-95 shadow-md' : 'text-slate-400'
           }`}
           style={isStoreOpen

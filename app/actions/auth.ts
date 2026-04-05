@@ -3,6 +3,7 @@
 import { cookies } from 'next/headers'
 import { prisma } from '@/lib/prisma'
 import { signPayload, verifyPayload } from '@/lib/session'
+import { logger } from '@/lib/logger'
 
 export async function loginWithPhone(phone: string, customerName?: string, storeId?: string) {
   if (!storeId) throw new Error('Tenant não identificado: storeId ausente no login')
@@ -37,7 +38,7 @@ export async function loginWithPhone(phone: string, customerName?: string, store
 
     return { success: true, user: customer }
   } catch (error) {
-    console.error("[auth] Erro no login:", error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('auth', 'loginWithPhone: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao entrar.' }
   }
 }
@@ -106,33 +107,38 @@ export async function saveAddress(data: AddressData, storeId?: string) {
       }
     })
 
-    geocodeAddress(address.id, data).catch(console.error)
+    // BUG-006: aguarda geocodificação; se falhar, salva endereço mas avisa o frontend
+    const geocodingOk = await geocodeAddress(address.id, data)
 
-    return { success: true, address }
+    return { success: true, address, ...(geocodingOk ? {} : { geocodingFailed: true }) }
   } catch (error) {
-    console.error("[auth] Erro ao salvar endereço:", error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('auth', 'saveAddress: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao salvar endereço.' }
   }
 }
 
-async function geocodeAddress(addressId: string, data: AddressData) {
+// Retorna true se as coordenadas foram obtidas e salvas com sucesso
+async function geocodeAddress(addressId: string, data: AddressData): Promise<boolean> {
   const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
-  if (!mapboxToken) return
+  if (!mapboxToken) return false
 
   const fullAddress = `${data.rua}, ${data.numero}, ${data.bairro}, ${data.cidade}, ${data.estado}, Brasil`
 
   try {
     const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(fullAddress)}.json?access_token=${mapboxToken}&limit=1`
     const res = await fetch(url)
-    if (!res.ok) return
+    if (!res.ok) return false
 
     const geoData = await res.json()
     if (geoData.features?.length > 0) {
       const [lng, lat] = geoData.features[0].center
       await prisma.address.update({ where: { id: addressId }, data: { lat, lng } })
+      return true
     }
+    return false
   } catch (err) {
-    console.error("[auth] Geocoding falhou:", err instanceof Error ? err.message : 'Erro desconhecido')
+    logger.error('auth', 'geocodeAddress: ' + (err instanceof Error ? err.message : 'Erro desconhecido'), err)
+    return false
   }
 }
 

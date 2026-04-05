@@ -11,7 +11,6 @@ import {
   Settings,
   CreditCard,
   LogOut,
-  Store,
   PanelLeftClose,
   PanelLeftOpen,
   Palette,
@@ -26,11 +25,13 @@ export default function AdminSidebar({
   storeId,
   storeName,
   logoUrl,
+  onClose,
 }: {
   slug: string
   storeId: string
   storeName: string
   logoUrl: string | null
+  onClose?: () => void
 }) {
   const pathname = usePathname()
   const { isCollapsed, setIsCollapsed } = useSidebar()
@@ -40,6 +41,7 @@ export default function AdminSidebar({
     navigator.clipboard.writeText(window.location.origin)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+    onClose?.()
   }
 
   const isActive = (href: string) => {
@@ -63,6 +65,7 @@ export default function AdminSidebar({
   ]
 
   const handleLogout = async () => {
+    onClose?.()
     await logoutLojista(storeId)
     const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
     window.location.href = `https://${slug}.${BASE_DOMAIN}/admin/login`
@@ -79,10 +82,11 @@ export default function AdminSidebar({
       {/* ── Branding ─────────────────────────────────────────────── */}
       <div className={`border-b border-slate-100 shrink-0 ${isCollapsed ? 'px-3 py-4' : 'px-5 py-5'}`}>
         {isCollapsed ? (
-          /* Ícone compacto da loja */
+          /* Ícone compacto — sempre logo-icon quando colapsado */
           <div className="flex justify-center">
-            <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center shrink-0">
-              <Store className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-white border border-slate-100">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo-icon.png" alt="Saiu Delivery" className="w-full h-full object-cover" />
             </div>
           </div>
         ) : (
@@ -97,8 +101,9 @@ export default function AdminSidebar({
               />
             ) : (
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center shrink-0">
-                  <Store className="w-4 h-4 text-white" />
+                <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-white border border-slate-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/logo-icon.png" alt="Saiu Delivery" className="w-full h-full object-cover" />
                 </div>
                 <span className="font-black text-slate-900 text-sm leading-tight truncate">{storeName}</span>
               </div>
@@ -116,6 +121,7 @@ export default function AdminSidebar({
             <Link
               key={href}
               href={href}
+              onClick={onClose}
               title={isCollapsed ? label : undefined}
               className={`
                 flex items-center rounded-xl transition-all relative overflow-hidden group
@@ -146,6 +152,7 @@ export default function AdminSidebar({
             <Link
               key={href}
               href={href}
+              onClick={onClose}
               title={isCollapsed ? label : undefined}
               className={`
                 flex items-center rounded-xl transition-all relative overflow-hidden group

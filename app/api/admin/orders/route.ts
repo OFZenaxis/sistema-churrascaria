@@ -34,6 +34,11 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Tenant não identificado' }, { status: 401 });
     }
 
+    const { searchParams } = new URL(req.url);
+    // BUG-013: paginação cursor-based — evita timeout em lojas de alto volume
+    const cursor = searchParams.get('cursor') ?? undefined;
+    const PAGE_SIZE = 50;
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -42,19 +47,23 @@ export async function GET(req: Request) {
          createdAt: { gte: today },
          storeId: store.id
       },
-      include: { 
-        items: { 
-          include: { 
-            product: { 
-              select: { name: true, price: true } 
-            } 
-          } 
-        } 
+      include: {
+        items: {
+          include: {
+            product: {
+              select: { name: true, price: true }
+            }
+          }
+        }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      take: PAGE_SIZE,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
 
-    return NextResponse.json({ orders });
+    const nextCursor = orders.length === PAGE_SIZE ? orders[orders.length - 1].id : null;
+
+    return NextResponse.json({ orders, nextCursor });
   } catch(e) {
     console.error('[Admin Orders GET]', e instanceof Error ? e.message : 'Erro desconhecido');
     return NextResponse.json({ error: 'Erro ao buscar pedidos' }, { status: 500 });

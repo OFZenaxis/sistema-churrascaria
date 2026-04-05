@@ -78,7 +78,7 @@ export default function ProductModal({ product, isOpen, isHot, onClose, onAddToC
             <div className="px-5 pt-2 pb-4 border-b relative" style={{ borderColor: border }}>
               <button
                 onClick={onClose}
-                className="absolute top-2 right-5 w-8 h-8 flex items-center justify-center rounded-full transition-colors"
+                className="absolute top-2 right-5 w-11 h-11 flex items-center justify-center rounded-full transition-colors"
                 style={{ background: subtleBg, color: phoneSubText }}
               >
                 <X className="w-4 h-4" />
@@ -122,7 +122,7 @@ export default function ProductModal({ product, isOpen, isHot, onClose, onAddToC
                 placeholder="Ex: sem cebola, sem açúcar, molho à parte..."
                 maxLength={200}
                 rows={4}
-                className="w-full rounded-2xl px-4 py-3 text-sm resize-none focus:outline-none transition-colors border-2"
+                className="w-full rounded-2xl px-4 py-3 text-base resize-none focus:outline-none transition-colors border-2"
                 style={{
                   background: phoneCard,
                   color: phoneText,

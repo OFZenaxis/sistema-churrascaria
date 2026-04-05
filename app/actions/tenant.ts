@@ -4,14 +4,7 @@ import { cookies } from 'next/headers'
 import { hash } from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { signPayload } from '@/lib/session'
-
-const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-
-const RESERVED_SLUGS = new Set([
-  'admin', 'api', 'login', 'logout', 'cadastro', 'pricing',
-  'about', 'contato', 'suporte', 'saiu', 'saiudelivery',
-  'app', 'dashboard', 'billing', 'webhook', 'static',
-])
+import { SLUG_REGEX, RESERVED_SLUGS } from '@/lib/validation'
 
 type RegisterInput = {
   ownerName: string

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from 'react'
-import { Flame, Mail, Lock, ArrowRight, Loader2, AlertCircle } from 'lucide-react'
+import { Mail, Lock, ArrowRight, Loader2, AlertCircle } from 'lucide-react'
 import { loginLojista } from '@/app/actions/adminAuth'
 import { useParams } from 'next/navigation'
 
@@ -39,9 +39,12 @@ export default function AdminLogin() {
 
         {/* Marca */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 bg-emerald-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/30 mb-4">
-            <Flame className="w-7 h-7 text-white" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-full.png"
+            alt="Saiu Delivery"
+            className="w-48 h-auto mx-auto mb-6 object-contain"
+          />
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">Painel do Lojista</h1>
           <p className="text-slate-500 text-sm mt-1">Entre com suas credenciais para continuar</p>
         </div>

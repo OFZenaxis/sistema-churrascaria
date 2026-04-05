@@ -61,6 +61,32 @@ export default function PhoneLogin({ isOpen, onClose, onSuccess, storeId, storeT
   const [addressLoading, setAddressLoading] = useState(false)
   const [addressError, setAddressError] = useState('')
 
+  // BUG-011: Restaura rascunho do sessionStorage na montagem do componente (resistente a F5)
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(`phonelogin_draft_${storeId}`)
+      if (!saved) return
+      const { step: s, phone: p, name: n } = JSON.parse(saved) as { step: Step; phone: string; name: string }
+      if (s && s !== 'done') {
+        setStep(s)
+        if (p) setPhone(p)
+        if (n) setName(n)
+      }
+    } catch { /* sessionStorage indisponível (SSR, modo privado restrito) */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId]) // apenas na montagem
+
+  // BUG-011: Persiste step/phone/name enquanto o fluxo não está concluído
+  useEffect(() => {
+    if (step === 'done') {
+      try { sessionStorage.removeItem(`phonelogin_draft_${storeId}`) } catch {}
+      return
+    }
+    try {
+      sessionStorage.setItem(`phonelogin_draft_${storeId}`, JSON.stringify({ step, phone, name }))
+    } catch { /* sessionStorage indisponível */ }
+  }, [step, phone, name, storeId])
+
   // Reset ao fechar
   useEffect(() => {
     if (!isOpen) {

@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { prisma } from '@/lib/prisma';
 
 // ══════════════════════════════════════════════════════════════════
 // WEBHOOK MERCADO PAGO — MULTI-TENANT (DEDICADO À CONSULTA DIRETA)
 // ══════════════════════════════════════════════════════════════════
+
+/** Tipo mínimo do body de notificação do Mercado Pago. BUG-010. */
+type MercadoPagoWebhookBody = {
+  data?: { id?: string }
+  action?: string
+}
 
 export async function POST(req: Request) {
   try {
@@ -16,7 +23,7 @@ export async function POST(req: Request) {
     const storeId = url.searchParams.get('storeId');
 
     // Parse do body payload
-    let body: any = {};
+    let body: MercadoPagoWebhookBody = {};
     try {
       body = await req.json();
     } catch (err) {
@@ -44,6 +51,56 @@ export async function POST(req: Request) {
       console.log('[WEBHOOK] 🧪 Teste simulado do Painel do MP recebido — retornando 200 OK');
       return NextResponse.json({ message: 'Conexão Teste OK' });
     }
+
+    // ══════════════════════════════════════════════════════════════
+    // 🔒 VALIDAÇÃO DE ASSINATURA x-signature (BUG-002)
+    // Garante que o webhook veio realmente do Mercado Pago.
+    // Ref: https://www.mercadopago.com.br/developers/pt/docs/your-integrations/notifications/webhooks
+    // ══════════════════════════════════════════════════════════════
+    const webhookSecret = process.env.MP_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error('[WEBHOOK] ⛔ MP_WEBHOOK_SECRET não configurado — rejeitando requisição.');
+      return NextResponse.json({ error: 'Configuração de segurança ausente' }, { status: 500 });
+    }
+
+    const xSignature = req.headers.get('x-signature') ?? '';
+    const xRequestId = req.headers.get('x-request-id') ?? '';
+
+    if (!xSignature) {
+      console.error('[WEBHOOK] ⛔ Header x-signature ausente — possível request forjado.');
+      return NextResponse.json({ error: 'Assinatura ausente' }, { status: 401 });
+    }
+
+    // Formato do header: "ts=<timestamp>,v1=<hash_hex>"
+    const tsMatch = xSignature.match(/ts=(\d+)/);
+    const v1Match = xSignature.match(/v1=([a-f0-9]+)/);
+
+    if (!tsMatch || !v1Match) {
+      console.error('[WEBHOOK] ⛔ Formato inválido do header x-signature.');
+      return NextResponse.json({ error: 'Formato de assinatura inválido' }, { status: 401 });
+    }
+
+    const ts = tsMatch[1];
+    const v1 = v1Match[1];
+
+    // String de manifesto conforme documentação oficial do MP
+    const dataIdForSig = url.searchParams.get('data.id') ?? '';
+    const manifest = `id:${dataIdForSig};request-id:${xRequestId};ts:${ts};`;
+
+    const expectedHash = createHmac('sha256', webhookSecret).update(manifest).digest('hex');
+    const expectedBuf = Buffer.from(expectedHash, 'utf8');
+    const receivedBuf = Buffer.from(v1, 'utf8');
+
+    // timingSafeEqual exige buffers de mesmo tamanho; tamanhos diferentes = assinatura inválida
+    const sigValid =
+      expectedBuf.length === receivedBuf.length &&
+      timingSafeEqual(expectedBuf, receivedBuf);
+
+    if (!sigValid) {
+      console.error('[WEBHOOK] ⛔ Assinatura x-signature inválida — request rejeitado.');
+      return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 });
+    }
+    // ── Fim da validação de assinatura ──────────────────────────────
 
     // Processar apenas eventos focados em status de pagamentos
     const isPaymentEvent = type === 'payment' || topic === 'payment' || body?.action?.includes('payment');
@@ -103,14 +160,14 @@ export async function POST(req: Request) {
       } else {
         console.log(`[WEBHOOK] Pagamento ID: ${paymentId} / Status atual: ${paymentData.status}`);
       }
-    } catch (mpError: any) {
-      console.error(`[WEBHOOK] Erro ao consultar pagamento diretamente na API MP: ${paymentId}:`, mpError?.message || mpError);
+    } catch (mpError: unknown) {
+      console.error(`[WEBHOOK] Erro ao consultar pagamento diretamente na API MP: ${paymentId}:`, mpError instanceof Error ? mpError.message : 'Erro desconhecido');
       return NextResponse.json({ message: 'Pagamento fantasma ou não processável pelo Mercado Pago' });
     }
 
     return NextResponse.json({ success: true });
-  } catch (e: any) {
-    console.error('[WEBHOOK] Erro Sistêmico Geral:', e?.message || e);
+  } catch (e: unknown) {
+    console.error('[WEBHOOK] Erro Sistêmico Geral:', e instanceof Error ? e.message : 'Erro desconhecido');
     // Retornar código de sucesso MP para barrar envios infinitos dele em caso de erro local crítico
     return NextResponse.json({ message: 'Erro contornável do servidor processado e abafado.' });
   }

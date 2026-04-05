@@ -11,53 +11,66 @@ const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 
 type TrackerProps = {
   orderId: string
+  storeId: string
+  /** BUG-019: coordenadas iniciais do mapa centradas na loja do tenant */
+  storeLat?: number | null
+  storeLng?: number | null
   onDelivered?: () => void
 }
 
-export default function CustomerTracker({ orderId, onDelivered }: TrackerProps) {
+// Fallback apenas quando a loja não tiver coordenadas configuradas
+const FALLBACK_LAT = -15.7801
+const FALLBACK_LNG = -47.9292
+
+export default function CustomerTracker({ orderId, storeId, storeLat, storeLng, onDelivered }: TrackerProps) {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [viewState, setViewState] = useState({
-    longitude: -47.9292, // Default Brasilia/Luziania bounding box
-    latitude: -15.7801,
+    longitude: storeLng ?? FALLBACK_LNG,
+    latitude: storeLat ?? FALLBACK_LAT,
     zoom: 14
   })
 
   const [orderStatus, setOrderStatus] = useState<string>('PENDING')
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
+    let stopped = false
+    let intervalId: NodeJS.Timeout
 
     const fetchLocation = async () => {
-      const res = await getOrderLocation(orderId)
-      if (res.success && res.data) {
-        setOrderStatus(res.data.status)
-        
-        if (res.data.status === 'DELIVERED') {
-          onDelivered?.()
+      if (stopped) return
+      try {
+        const res = await getOrderLocation(orderId, storeId)
+        if (stopped) return
+        if (!res.success || !res.data) return
+
+        const { status, driverLat, driverLng } = res.data
+        setOrderStatus(status)
+
+        // BUG-004: para o polling ao atingir status terminal
+        if (status === 'DELIVERED' || status === 'CANCELED') {
+          stopped = true
+          clearInterval(intervalId)
+          if (status === 'DELIVERED') onDelivered?.()
           return
         }
 
-        // @ts-ignore
-        if (res.data && res.data.driverLat && res.data.driverLng) {
-          // @ts-ignore
-          setLocation({ lat: res.data.driverLat, lng: res.data.driverLng })
-          
-          setViewState(prev => ({
-            ...prev,
-            // @ts-ignore
-            latitude: res.data.driverLat as number,
-            // @ts-ignore
-            longitude: res.data.driverLng as number,
-          }))
+        if (driverLat && driverLng) {
+          setLocation({ lat: driverLat, lng: driverLng })
+          setViewState(prev => ({ ...prev, latitude: driverLat, longitude: driverLng }))
         }
+      } catch {
+        // Silent — próximo ciclo tentará novamente
       }
     }
 
     fetchLocation()
-    interval = setInterval(fetchLocation, 4000)
+    intervalId = setInterval(fetchLocation, 4000)
 
-    return () => clearInterval(interval)
-  }, [orderId, onDelivered])
+    return () => {
+      stopped = true
+      clearInterval(intervalId)
+    }
+  }, [orderId, storeId, onDelivered])
 
   if (!MAPBOX_TOKEN) {
     return (

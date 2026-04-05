@@ -6,271 +6,409 @@
 
 ---
 
-## Stack Técnico
+## 1. Visão Geral do Produto
 
-| Camada | Tecnologia | Versão |
-|--------|-----------|--------|
-| Framework | Next.js (App Router) | 16.2.1 |
-| Linguagem | TypeScript | 5.x |
-| Banco de Dados | PostgreSQL via Prisma ORM | 5.22 |
-| Estilização | Tailwind CSS | 4.x |
-| Animações | Framer Motion | 12.x |
-| Ícones | Lucide React | 1.7 |
-| Gráficos | Recharts | 3.x |
-| Mapas | Mapbox GL + react-map-gl | 3.x / 8.x |
-| Geometria Geo | @turf/turf | 7.x |
-| Upload de Imagens | Supabase Storage | 2.x |
-| Pagamentos | Mercado Pago (SDK + Bricks) | 2.x |
-| Autenticação | HMAC-SHA256 — cookies HttpOnly por tenant | — |
-| Hash de senha | bcryptjs | 3.x |
-| UI headless | @headlessui/react | 2.x |
+**Saiu Delivery** é uma plataforma SaaS multi-tenant de delivery para restaurantes brasileiros.
+
+| Dimensão | Detalhe |
+|----------|---------|
+| Modelo | B2B2C — Lojistas (B) configuram suas lojas para servir clientes finais (C) |
+| Multi-tenancy | Subdomínios (`loja.saiudelivery.com.br`) + Custom Domains |
+| Isolamento | Cada tenant tem `storeId` próprio; todo dado filtra por `storeId` no Prisma |
+| Autenticação | Cookies HMAC-SHA256 isolados por tenant |
+| Pagamentos | Mercado Pago por tenant (chaves próprias em `StorePaymentConfig`) |
 
 ---
 
-## Modelo de Dados (Prisma Schema — resumo)
+## 2. Arquitetura de Rotas (Next.js App Router)
 
 ```
-Store          — tenant central. Campos: slug, customDomain, name, logoUrl,
-                 coverImageUrl, brandColor, themeId, tagline, phone, city,
-                 isOpen, kitchenPin, storeAddress, storeLat/Lng,
-                 baseDeliveryFee, deliveryFeePerKm, maxDeliveryRadius, tier
-
-User           — staff da loja (ADMIN, MANAGER, DRIVER, SUPER_ADMIN)
-Customer       — cliente final (unique por storeId+phone)
-Address        — endereços do customer (lat/lng, isDefault)
-Category       — categorias de produtos por tenant
-Product        — produtos (name, price, imageUrl, maxSides, isActive)
-Order          — pedido (status, totalAmount, paymentMethod, paymentStatus,
-                 customerName, customerPhone, deliveryAddress, changeFor)
-OrderItem      — item do pedido (productId, quantity, unitPrice, doneness, comboSides)
-Delivery       — entrega atribuída a motoboy (driverName, dispatchedAt, deliveredAt)
-DeliveryZone   — zonas de entrega por tenant (name, fee, estimatedTime, isActive)
-StorePaymentConfig — credenciais Mercado Pago por tenant (mpAccessToken, mpPublicKey, pixDiscountPercent)
+app/
+├── (marketing)/                   ← Domínio raiz (saiudelivery.com.br)
+│   ├── layout.tsx                 ← Root layout com metadata global
+│   ├── page.tsx                   ← Landing page da plataforma
+│   └── cadastro/
+│       └── page.tsx               ← Registro de novo tenant (stepper 3 etapas)
+│
+└── (store)/
+    └── [slug]/                    ← Tenant identificado pelo slug
+        ├── layout.tsx             ← generateMetadata dinâmico (nome, logo, brand)
+        ├── page.tsx               ← Vitrine pública (cardápio + carrinho)
+        │
+        ├── admin/
+        │   ├── login/
+        │   │   └── page.tsx       ← Login do lojista (light design)
+        │   │
+        │   └── (dashboard)/       ← Painel admin protegido (session required)
+        │       ├── layout.tsx     ← Server: valida sessão, busca store, passa props
+        │       ├── loading.tsx    ← Skeleton com animate-pulse
+        │       ├── page.tsx       ← Dashboard: KPIs, gráfico, top produtos, pedidos
+        │       ├── cardapio/
+        │       │   └── page.tsx   ← CRUD de categorias e produtos (toggle ativo/inativo)
+        │       ├── configuracoes/
+        │       │   ├── page.tsx   ← Config geral: nome, tagline, logo, cover, PIN cozinha
+        │       │   └── pagamentos/
+        │       │       └── page.tsx ← Credenciais Mercado Pago por tenant
+        │       ├── entregas/
+        │       │   └── page.tsx   ← Endereço da loja + mapa + raio + tarifação
+        │       ├── kds/
+        │       │   └── page.tsx   ← Kitchen Display System (tela de cozinha)
+        │       └── personalizacao/
+        │           └── page.tsx   ← Tema/cores/branding da loja
+        │
+        ├── motoboy/
+        │   └── page.tsx           ← Dashboard do entregador (aceitar/finalizar corridas)
+        ├── orders/
+        │   └── page.tsx           ← Histórico de pedidos do cliente
+        ├── pedido/
+        │   └── [id]/
+        │       └── page.tsx       ← Rastreamento em tempo real do pedido
+        └── pagamento/
+            └── [id]/
+                └── page.tsx       ← Checkout transparente (Payment Brick MP)
 ```
-
-**Enums:**
-- `OrderStatus`: PENDING → PREPARING → READY_FOR_PICKUP → DISPATCHED → DELIVERED | CANCELED
-- `MeatDoneness`: RARE, MEDIUM_RARE, MEDIUM, MEDIUM_WELL, WELL_DONE
-- `Role`: SUPER_ADMIN, ADMIN, MANAGER, DRIVER
-- `SubscriptionTier`: BASIC, PRO, ENTERPRISE
 
 ---
 
-## Multi-tenancy — Como Funciona
+## 3. Proxy Multi-Tenant (`proxy.ts`)
 
-Cada loja existe como um **tenant isolado** identificado por `storeId`. O isolamento opera em duas camadas:
+Arquivo na raiz do projeto. Substitui `middleware.ts` (Next.js 16.2.1+ usa `proxy.ts`).
 
-### 1. Resolução de Tenant (URL → Store)
+**Exporta:** `export function proxy(req: NextRequest)` + `export const config`
 
-```ts
-// lib/tenant.ts
-export function tenantWhere(slug: string) {
-  return slug.includes('.') ? { customDomain: slug } : { slug }
+### Fluxo de Decisão
+
+```
+Requisição recebida
+├── É arquivo estático (_next/*, favicon)? → Ignorar
+├── Host é domínio raiz?
+│   ├── saiudelivery.com.br
+│   ├── www.saiudelivery.com.br
+│   └── localhost:3000/3001
+│   → Servir app/(marketing)/ sem rewrite
+│
+├── Host é subdomínio (*.saiudelivery.com.br)?
+│   → Extrair slug do subdomínio
+│   → Rewrite: /{slug}{pathname}
+│   → Injetar header: x-store-domain = hostname
+│   → Se path começa com /admin (e não é /admin/login):
+│       → Cookie lojista_token_* ausente? → Redirect /admin/login
+│
+└── Host é domínio customizado?
+    → Usar hostname completo como slug
+    → Rewrite: /{hostname}{pathname}
+    → Mesma proteção /admin
+```
+
+### Header `x-store-domain`
+
+Injetado em todas as requisições de tenant. As API routes (`/api/admin/orders`, `/api/admin/store-status`) leem este header para identificar o tenant sem precisar do slug na URL.
+
+---
+
+## 4. Componentes da Vitrine (B2C)
+
+### `components/MenuComponent.tsx` (Componente principal — 549 linhas)
+
+**Tipo:** Client Component (`"use client"`)
+
+**Props recebidas de `app/(store)/[slug]/page.tsx`:**
+- `products: Product[]` — cardápio completo
+- `categories: Category[]` — categorias para o carrossel
+- `isStoreOpen: boolean`
+- `storeId: string`
+- `slug: string`
+- `storeTheme: StoreTheme` — cores e layout
+- `isLoggedIn: boolean`
+- `userAddresses: Address[]`
+- `logoUrl?: string | null`
+
+**Funcionalidades implementadas:**
+- Carrossel de categorias com snap-scroll (mobile)
+- Busca de produtos por nome
+- Carrinho de compras (array de `CartItem`)
+- Modal de checkout com estimativa de frete
+- Integração com `submitOrder` e `estimateDeliveryFee`
+- Safe area para iPhone (env CSS `safe-area-inset-bottom`)
+- Overlay de loja fechada com logo ou ícone da loja
+
+**Estados principais:**
+```typescript
+cart: CartItem[]
+showCart: boolean
+showCheckout: boolean
+selectedProduct: Product | null
+paymentMethod: 'PIX' | 'CARD_ONLINE' | 'CARD_MACHINE' | 'CASH'
+selectedAddressId: string | null
+changeFor: string
+```
+
+**⚠️ Dívida técnica:** Componente monolítico com 549 linhas. Ver BUG-015.
+
+---
+
+### `components/ProductCard.tsx`
+
+Lista de produtos (layout `list`). Exibe imagem, nome, descrição truncada, preço e botão `+`. Touch target mínimo 44px. Usa `StoreTheme` para todas as cores.
+
+### `components/ProductModal.tsx`
+
+Bottom sheet animado (Framer Motion) com detalhes do produto, campo de observação e botão de adicionar ao carrinho.
+
+### `components/PhoneLogin.tsx` (435 linhas)
+
+Stepper de autenticação do cliente:
+1. **Passo 1 — Telefone:** Coleta `phone` e `name`
+2. **Passo 2 — Endereço:** Formulário com CEP + campos estruturados
+3. **Passo 3 — Resumo:** Confirma dados antes de fazer login
+
+Chama `loginWithPhone()` e `saveAddress()`.
+
+---
+
+## 5. Painel Admin
+
+### Layout do Painel
+
+```
+AdminLayoutWrapper.tsx (Client)
+├── SidebarProvider (Context: isCollapsed, isKitchenMode, kitchenPin)
+└── LayoutInner
+    ├── [Mobile] Header fixo (logo + hamburger) — md:hidden
+    ├── [Mobile] Backdrop escuro ao abrir drawer
+    ├── AdminSidebar (drawer no mobile, inline no desktop)
+    └── <main> (flex-1 overflow-y-auto)
+```
+
+### `AdminSidebar.tsx`
+
+Navegação principal do painel. Props: `slug`, `storeId`, `storeName`, `logoUrl`, `onClose`.
+
+**Itens de navegação:**
+- `/admin` — Visão Geral (Dashboard)
+- `/admin/cardapio` — Cardápio
+- `/admin/kds` — KDS / Cozinha
+- `/admin/entregas` — Entregas
+
+**Itens do rodapé:**
+- `/admin/personalizacao` — Personalização
+- `/admin/configuracoes/pagamentos` — Pagamentos
+- `/admin/configuracoes` — Configurações
+- Botão: Copiar link da loja (`navigator.clipboard`)
+- Botão: Logout (`logoutLojista` + redirect)
+- Botão: Recolher/expandir sidebar
+
+**Comportamento mobile:** Slide-in como drawer via translate CSS (`-translate-x-full` → `translate-x-0`).
+
+### `SidebarContext.tsx`
+
+Context compartilhado entre `AdminLayoutWrapper` e `AdminSidebar`.
+
+```typescript
+{
+  isCollapsed: boolean       // sidebar colapsada no desktop
+  setIsCollapsed: (v) => void
+  isKitchenMode: boolean     // esconde a sidebar no KDS
+  setIsKitchenMode: (v) => void
+  kitchenPin: string | null  // PIN lido do banco no boot, imutável
 }
 ```
 
-Se o `[slug]` da URL contém `.` → é um domínio customizado (`minha-loja.com.br`).
-Caso contrário → é o slug da plataforma (`saiudelivery.com.br/minha-loja`).
+### `StoreToggle.tsx`
 
-**Todo** `prisma.store.findFirst` do sistema obrigatoriamente passa por `tenantWhere`. Nunca se faz `where: { slug }` direto.
+Botão de toggle "Loja Aberta/Fechada" no dashboard. Chama `toggleStoreStatus()`. Design de switch com animação de thumb.
 
-### 2. Cookies de Sessão Isolados por Tenant
+---
 
-Dois tipos de cookie, ambos assinados com HMAC-SHA256:
+## 6. Kitchen Display System (KDS)
 
-| Cookie | Usuário | Formato do nome |
-|--------|---------|----------------|
-| `session_token_{storeId}` | Cliente final | Por tenant |
-| `admin_session_{storeId}` | Lojista/Staff | Por tenant |
+**Arquivo:** `app/(store)/[slug]/admin/(dashboard)/kds/page.tsx`
 
-Um lojista logado na loja A não pode acessar a loja B. Um cliente da loja A não tem sessão na loja B.
+**Funcionalidades:**
+- Polling a cada 8 segundos via `fetchKdsOrders()`
+- Exibe pedidos em 3 colunas: `PENDING` → `PREPARING` → `READY_FOR_PICKUP`
+- Botão "Avançar" muda status via `updateOrderStatus()`
+- Fullscreen mode (com suporte webkit para iOS Safari)
+- Pin de desbloqueio por tenant (`kitchenPin`)
+- `setIsKitchenMode(true)` esconde a sidebar lateral
 
-### 3. HMAC — `lib/session.ts`
+**⚠️ Dívida técnica:** `mapOrder(raw: any)` sem tipagem (BUG-010).
 
-```ts
-signPayload(payload)   // payload + "." + HMAC-SHA256(payload, COOKIE_SECRET)
-verifyPayload(token)   // verifica com timingSafeEqual — previne timing attacks
+---
+
+## 7. Aba de Entregas
+
+**Arquivo:** `app/(store)/[slug]/admin/(dashboard)/entregas/ZonasClient.tsx`
+
+**Funcionalidades implementadas:**
+- Busca automática de endereço via **ViaCEP** ao preencher CEP
+- Preview de endereço montado (`logradouro, numero, bairro, cidade, uf`)
+- **Live Geocoding** com debounce de 1500ms via Mapbox (atualiza mapa em tempo real)
+- Marcador **arrastável** no mapa (`react-map-gl` Marker com `draggable`)
+- Prioridade: ajuste manual > live preview (flag `isManualAdjRef`)
+- Badge de status: 4 estados (geocodificando / ajuste manual / confirmado / pendente)
+- Mapa de raio de entrega com círculos concêntricos
+- Campos responsivos: `grid-cols-1 sm:grid-cols-[1fr_100px]`
+- Simulador de frete dinâmico (3 pontos: 33%, 66%, 100% do raio)
+
+**Arquivo:** `app/(store)/[slug]/admin/(dashboard)/entregas/DeliveryMap.tsx`
+
+- `react-map-gl` com `MapRef` para `flyTo()` (sem remount com `key`)
+- Marcador arrastável com feedback visual durante drag (`bg-blue-500 scale-110`)
+- Anéis de raio via `@turf/turf` calculados por `simulatorSteps`
+
+---
+
+## 8. Server Actions (app/actions/)
+
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `adminAuth.ts` | Login/logout lojista, gerenciamento de sessão admin |
+| `auth.ts` | Login/logout cliente, gerenciamento de endereços |
+| `checkout.ts` | Estimativa de frete, submissão de pedido |
+| `admin.ts` | CRUD de produtos/categorias, configurações de loja, KDS, entregas |
+| `kitchen.ts` | Avanço de status (cozinha) |
+| `driver.ts` | Aceitar e finalizar corridas (motoboy) |
+| `tracker.ts` | Atualizar e ler localização do motoboy |
+| `paymentConfig.ts` | Gerenciar credenciais MP do tenant |
+| `tenant.ts` | Registro de novo tenant (Store + User em transação) |
+
+**Padrão de autorização em todas as actions admin:**
+```typescript
+const session = await requireAdminSession(storeId)
+if (!session) return { error: 'Não autorizado' }
 ```
 
-Boot guard: se `COOKIE_SECRET` não estiver definido, o servidor recusa iniciar com erro `[FATAL]`.
+---
+
+## 9. API Routes (app/api/)
+
+| Rota | Método | Responsabilidade | Auth |
+|------|--------|-----------------|------|
+| `/api/tenant` | POST | Criar novo tenant | Pública |
+| `/api/tenant/check-slug` | GET | Verificar disponibilidade de slug | Pública |
+| `/api/admin/orders` | GET, PUT | Listar e atualizar status de pedidos | Header `x-store-domain` |
+| `/api/admin/store-status` | GET, POST | Consultar/alterar status da loja | Header `x-store-domain` |
+| `/api/orders/[id]/status` | GET | Status do pedido para cliente ou admin | Cookie de sessão |
+| `/api/payments` | POST | Criar pagamento no Mercado Pago | Implícito via orderId |
+| `/api/webhooks/mercadopago` | POST | Receber notificação de pagamento | Query `storeId` |
 
 ---
 
-## Mapa de Rotas
+## 10. Utilitários (lib/)
 
-### `app/(marketing)/` — Plataforma SaaS (B2B Lead)
-
-| Rota | Tipo | O que faz |
-|------|------|-----------|
-| `/` | Server | Landing page de conversão — pitch do SaaS, mockup de pedido, comparativo com iFood/Rappi |
-| `/cadastro` | Client | Formulário multi-step (3 etapas): dados pessoais → dados da loja + validação de slug em tempo real → senha. Submit chama `registerNewStore()` → auto-login → redirect para `/{slug}/admin` |
-
----
-
-### `app/(store)/[slug]/` — Vitrine Pública B2C
-
-| Rota | Tipo | O que faz |
-|------|------|-----------|
-| `/[slug]` | Server | Cardápio completo da loja |
-| `/[slug]/orders` | Server | Hub "Minha Conta" do cliente |
-| `/[slug]/pedido/[id]` | Client | Rastreador de status do pedido em tempo real |
-| `/[slug]/pagamento/[id]` | Server+Client | Checkout PIX ou Cartão via Mercado Pago Bricks |
-| `/[slug]/motoboy` | Server+Client | App de motoboy (GPS, aceitar/finalizar corridas) |
+| Arquivo | Função Principal |
+|---------|----------------|
+| `lib/session.ts` | `signPayload(payload)` + `verifyPayload(token)` — HMAC-SHA256 com `timingSafeEqual` |
+| `lib/tenant.ts` | `tenantWhere(slug)` — resolve `{ slug }` ou `{ customDomain }` para queries Prisma |
+| `lib/mapbox.ts` | `geocodeAddress(addr)` + `getDrivingDistance(lat,lng,lat,lng)` + `calcDeliveryFee()` |
+| `lib/upload.ts` | `uploadImage(file, storeId)` — Upload client-side para Supabase Storage |
+| `lib/prisma.ts` | Singleton do PrismaClient (evita conexões duplicadas em hot reload) |
 
 ---
 
-### `app/(store)/[slug]/admin/` — Painel do Lojista B2B
+## 11. Temas da Vitrine
 
-| Rota | Tipo | O que faz |
-|------|------|-----------|
-| `/[slug]/admin/login` | Client | Autenticação do lojista por senha |
-| `/[slug]/admin` | Server | Dashboard de métricas financeiras |
-| `/[slug]/admin/cardapio` | Client | CRUD de produtos e categorias |
-| `/[slug]/admin/kds` | Client | Kitchen Display System com polling |
-| `/[slug]/admin/entregas` | Client | Configuração de zonas e raio de entrega (Mapbox) |
-| `/[slug]/admin/personalizacao` | Client | Tema, cores, logo e banner da loja |
-| `/[slug]/admin/configuracoes` | Client | Dados da loja (nome, endereço, cidade, tagline) |
-| `/[slug]/admin/configuracoes/pagamentos` | Client | Config Mercado Pago (token + public key) |
+**Arquivo:** `lib/themes.ts` (inferido)
 
----
+6 temas pré-configurados que definem `StoreTheme`:
 
-### `app/api/` — Route Handlers REST
+| ID | Nome | Emoji | Layout | Fonte |
+|----|------|-------|--------|-------|
+| `classic-light` | Hamburgueria Clássica | 🍔 | `featured` | sans |
+| `tokyo-dark` | Sushi Dark Mode | 🍣 | `grid` | sans |
+| `napoli-warm` | Pizzaria Artesanal | 🍕 | `list` | serif |
+| `tropical-fresh` | Açaí & Smoothies | 🫐 | `list` | rounded |
+| `brazil-bbq` | Churrascaria Premium | 🥩 | `list` | sans |
+| `cafe-premium` | Café Sofisticado | ☕ | `list` | serif |
 
-| Endpoint | Método | O que faz |
-|----------|--------|-----------|
-| `/api/tenant` | POST | Cria novo tenant (Store + User admin) em transação atômica |
-| `/api/tenant/check-slug` | GET | Valida disponibilidade de slug com regex + reserved list |
-| `/api/admin/orders` | GET | Lista pedidos do tenant para o admin (isolado por Host header) |
-| `/api/admin/store-status` | PATCH | Toggle `isOpen` da loja |
-| `/api/orders/[id]/status` | GET | Polling de status de pedido (cliente + motoboy) |
-| `/api/payments` | POST | Cria preferência de pagamento no Mercado Pago |
-| `/api/webhooks/mercadopago` | POST | Recebe notificação de pagamento e atualiza `paymentStatus` |
-
----
-
-### `app/actions/` — Server Actions
-
-| Arquivo | Funções principais |
-|---------|-------------------|
-| `auth.ts` | `login`, `logout`, `getSessionUser`, `saveAddress` |
-| `adminAuth.ts` | `loginLojista`, `logoutLojista`, `getLojistaSession` |
-| `admin.ts` | CRUD de produtos, categorias, atualização de pedidos |
-| `checkout.ts` | `submitOrder`, `estimateDeliveryFee` |
-| `driver.ts` | `acceptRide`, `finishRide` |
-| `kitchen.ts` | `advanceOrderStatus`, `cancelOrder` |
-| `tracker.ts` | `updateMotoboyLocation` |
-| `tenant.ts` | `registerNewStore` (com auto-login) |
-| `paymentConfig.ts` | `savePaymentConfig` |
-
----
-
-## B2C — Vitrine Pública em Detalhe
-
-### `app/(store)/[slug]/page.tsx` — Cardápio
-
-Server Component. Shell de layout `max-w-md mx-auto h-screen flex flex-col overflow-hidden shadow-2xl`. Header hero com foto de capa ou gradiente de `brandColor`. Verifica sessão do cliente (`getSessionUser`) e passa `isLoggedIn` ao `MenuComponent`.
-
-### `components/MenuComponent.tsx` — Motor do Cardápio
-
-Client Component central. Contém toda a lógica interativa:
-
-**ScrollSpy:** `IntersectionObserver` com `rootMargin: '-10% 0px -80% 0px'` detecta qual categoria está visível e destaca o tab. `scrollMarginTop: '108px'` compensa o sticky header.
-
-**Busca:** `searchQuery` como state. Modo de busca ativa exibe lista plana filtrada. Botão `✕` para limpar.
-
-**Motor de Upsell:**
-```ts
-const cartProductIds = new Set(cart.map(i => i.product.id))
-const upsellProducts = activeProducts
-  .filter(p => !cartProductIds.has(p.id))
-  .sort((a, b) => a.price - b.price)
-  .slice(0, 6)
-```
-Exibido em carrossel horizontal dentro do drawer de checkout. Click: fecha checkout (150ms delay) → abre `ProductModal`.
-
-**BottomNav inteligente:** Tab "Conta" → se `isLoggedIn`, navega para `/orders`; caso contrário, abre `PhoneLogin`. Elimina silent redirect failure.
-
-**Travamento de scroll:** `document.body.style.overflow = 'hidden'` via `useEffect` quando qualquer modal está aberto. Drawer com `overscroll-contain`.
-
-**Cálculo de frete:** `estimateDeliveryFee(addressId, storeId)` via `useEffect` ao abrir checkout ou trocar endereço. Mapbox geocodifica a loja + endereço do cliente, calcula distância em km, aplica `baseDeliveryFee + km * deliveryFeePerKm`, valida `maxDeliveryRadius`.
-
-**Validação de troco:** `changeForError` como computed value — borda vermelha em tempo real, bloqueia submissão.
-
-### Sistema de Temas — `lib/themes.ts`
-
-6 temas predefinidos com tokens: `phoneBg`, `phoneCard`, `phoneText`, `phoneSubText`, `phoneBorderRadius`, `layoutStyle`, `fontFamily`. `brandColor` do tenant sobrescreve o accent de cada tema. Todos os componentes recebem `storeTheme: StoreTheme` como prop — zero cores hardcoded.
-
-| ID | Nome |
-|----|------|
-| `classic-light` | Fundo branco, texto escuro |
-| `tokyo-dark` | Dark mode profundo |
-| `napoli-warm` | Tons quentes terrosos |
-| `tropical-fresh` | Verde vibrante |
-| `brazil-bbq` | Marrom e âmbar |
-| `cafe-premium` | Neutros premium |
-
-### SEO Dinâmico — `app/(store)/[slug]/layout.tsx`
-
-`generateMetadata()` busca `{ name, tagline, coverImageUrl, logoUrl }` no banco. Monta `og:title`, `og:description` (`tagline ?? fallback`), `og:image` (`coverImageUrl ?? logoUrl`), `twitter:card: 'summary_large_image'`. WhatsApp e Instagram puxam o card de preview dinamicamente por loja.
-
-### Fluxo de Pagamento
-
-```
-Checkout (drawer) → submitOrder() → res.orderId
-  ├── PIX / CARD_ONLINE → /[slug]/pagamento/[id]?method=...
-  │     ├── PIX → PaymentPixClient: POST /api/payments → QR code
-  │     │         polling GET /api/orders/[id]/status a cada 4s
-  │     │         webhook /api/webhooks/mercadopago → paymentStatus='approved'
-  │     │         → redirect /[slug]/pedido/[id]
-  │     └── CARD → PaymentClient (MP Bricks) → POST /api/payments
-  │               → redirect /[slug]/pedido/[id]
-  └── CARD_MACHINE / CASH → /[slug]/pedido/[id] direto
+**`StoreTheme` interface:**
+```typescript
+{
+  brandColor: string      // hex (#10b981)
+  phoneBg: string         // background da vitrine
+  phoneCard: string       // background dos cards
+  phoneText: string       // cor do texto principal
+  phoneSubText: string    // cor do texto secundário
+  phoneBorderRadius: string // border-radius dos elementos
+  layoutStyle: 'list' | 'grid' | 'featured'
+  fontFamily: 'sans' | 'serif' | 'rounded'
+}
 ```
 
-### App do Motoboy — `/[slug]/motoboy/`
+---
 
-Client Component com mapa Mapbox fullscreen (estilo Waze). GPS via `navigator.geolocation.watchPosition()` contínuo. Atualiza posição via `updateMotoboyLocation`. Rota desenhada via Mapbox Directions API a cada 30s. Botões: WhatsApp direto, abrir Waze com coordenadas, confirmar entrega. Estatísticas do dia (corridas + ganhos).
+## 12. Fluxo de Pedido (End-to-End)
+
+```
+1. Cliente acessa vitrine (slug.saiudelivery.com.br)
+2. Seleciona produtos → adiciona ao carrinho (estado local)
+3. Clica "Fazer Pedido" → PhoneLogin se não autenticado
+4. Seleciona endereço → estimateDeliveryFee() calcula frete (Mapbox Directions)
+5. Escolhe método de pagamento
+   ├── PIX/Cartão Online → submitOrder() → redireciona para /pagamento/[id]
+   │   → Payment Brick (MP) processa → Webhook MP atualiza Order
+   └── Dinheiro/Cartão Máquina → submitOrder() direto
+6. Lojista vê pedido no KDS → avança PENDING → PREPARING → READY_FOR_PICKUP
+7. Motoboy vê corrida em /motoboy → acceptRide() → status DISPATCHED
+8. Motoboy envia GPS → updateMotoboyLocation() → cliente rastreia em tempo real
+9. Motoboy entrega → finishRide() → status DELIVERED → polling do cliente para
+```
 
 ---
 
-## B2B — Painel do Lojista em Detalhe
+## 13. Padrões de Código Obrigatórios
 
-### Dashboard de Métricas — `/admin/`
+### Multi-tenancy
+```typescript
+// SEMPRE usar tenantWhere — nunca { slug } direto
+import { tenantWhere } from '@/lib/tenant'
+prisma.store.findFirst({ where: tenantWhere(slug) })
+```
 
-Server Component com `force-dynamic`. Filtro temporal via `?period=` lido de `searchParams`. `getDateRange(period)` calcula `startDate/endDate` com `new Date(year, month, day)` puro (horário local, sem libs).
+### Cores na Vitrine
+```typescript
+// NUNCA hardcode de cor em componentes B2C
+// SEMPRE usar tokens do storeTheme
+<div style={{ background: phoneCard, color: phoneText }}>
+```
 
-**Queries paralelas via `Promise.all`:**
-- KPIs: totalSales, totalOrders, averageTicket (excluindo CANCELED)
-- `groupBy paymentMethod` → breakdown por forma de pagamento
-- `orderItem.findMany` → base para categorias e top produtos (Curva ABC)
-- `order.findMany({ take: 8 })` sem filtro de data → últimos pedidos globais
+### Cookies
+```typescript
+// SEMPRE incluir storeId no nome do cookie
+`session_token_${storeId}`    // cliente
+`lojista_token_${storeId}`    // admin
+```
 
-**`RevenueChart.tsx`** (Client, recharts): `AreaChart` com curva `monotone`, gradiente na `brandColor` do tenant. Agrupamento por hora (today/yesterday) ou por dia (demais). Tooltip customizado.
-
-**`DashboardFilter.tsx`** (Client): Dropdown custom com `useState isOpen`, `useRef + mousedown` para fechar ao clicar fora. `ChevronDown` animado 180°. `router.push('?period=...')` sem reload.
-
-### KDS — `/admin/kds/`
-
-Polling a cada N ms via `setInterval`. Pedidos PENDING e PREPARING em cards. Botão avança status. Suporte a fullscreen para monitores de cozinha. PIN numérico por tenant.
-
-### Entregas — `/admin/entregas/`
-
-Mapbox GL com react-map-gl. Zonas como polígonos GeoJSON via @turf/turf. CRUD de zonas com raio, taxa e tempo estimado. Debounce de 350ms no input de raio.
-
-### Personalização — `/admin/personalizacao/`
-
-Seleção de tema (6 opções), `brandColor` via color picker, upload de logo e banner para Supabase Storage. Preview em tempo real.
+### Proxy vs Middleware
+```typescript
+// NUNCA criar middleware.ts
+// SEMPRE usar proxy.ts com export function proxy()
+```
 
 ---
 
-## Onboarding de Novo Tenant
+## 14. Funcionalidades em Produção (Checklist)
 
-```
-POST /api/tenant (ou server action registerNewStore)
-  ├── Validação: slug regex, reserved list, campos obrigatórios
-  ├── DB: prisma.$transaction → Store + User (ADMIN) com passwordHash
-  ├── Auto-login: assina cookie admin_session_{storeId}
-  └── Redirect para /{slug}/admin
-```
-
-Slugs reservados: `admin`, `api`, `login`, `logout`, `cadastro`, `pricing`, entre outros.
+| Feature | Status | Notas |
+|---------|--------|-------|
+| Vitrine multi-tenant | ✅ Funcionando | Subdomínios + custom domains |
+| Cardápio com categorias | ✅ Funcionando | CRUD completo no admin |
+| Carrinho de compras | ✅ Funcionando | Estado local, sem persistência |
+| Login por telefone (cliente) | ✅ Funcionando | Sem senha, phone-first |
+| Endereços salvos | ✅ Funcionando | Com geocodificação Mapbox |
+| Estimativa de frete dinâmico | ✅ Funcionando | Mapbox Directions + fallback |
+| Checkout PIX | ✅ Funcionando | Mercado Pago Brick |
+| Checkout Cartão Online | ✅ Funcionando | Mercado Pago Brick |
+| Checkout Dinheiro/Maquininha | ✅ Funcionando | Sem integração MP |
+| KDS (Kitchen Display System) | ✅ Funcionando | Polling 8s, fullscreen, PIN |
+| Rastreamento GPS do motoboy | ✅ Funcionando | Polling 4s, mapa em tempo real |
+| Painel admin responsivo | ✅ Funcionando | Mobile drawer + desktop sidebar |
+| Personalização de tema | ✅ Funcionando | 6 temas + brand color custom |
+| Upload de logo/cover | ✅ Funcionando | Supabase Storage |
+| Zonas de entrega no mapa | ✅ Funcionando | ViaCEP + Mapbox + marcador arrastável |
+| Dashboard financeiro | ✅ Funcionando | KPIs reais + gráfico Recharts |
+| Webhook Mercado Pago | ✅ Parcial | Recebe mas não valida x-signature (BUG-002) |
+| Rate limiting | ❌ Ausente | BUG-016 |
+| Testes automatizados | ❌ Ausente | BUG-017 |
+| Monitoramento (Sentry) | ❌ Ausente | BUG-018 |

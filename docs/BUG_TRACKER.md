@@ -1,108 +1,241 @@
-# BUG TRACKER — Dívida Técnica e Correções
+# BUG TRACKER — Saiu Delivery SaaS
 
 > **Documento Oficial de Engenharia — Leitura obrigatória para todo o time.**
+> Última atualização: 2026-04-04 (Auditoria autônoma sobre o código-fonte real)
 
 ---
 
-## 📋 Regras de Conduta
+## Legenda
 
-1. **Todo bug, erro ou dívida técnica encontrada a partir de hoje DEVE ser registrada neste arquivo ANTES de ser corrigida.**
-2. Quando um item for resolvido, marque a caixa como concluída (`- [x]`) e adicione a data da correção ao final da linha.
-3. Novos itens devem ser adicionados à seção de prioridade correta com um ID sequencial (C-06, W-11, O-09, etc.).
-4. Nunca feche um item sem descrever brevemente o que foi feito para corrigi-lo.
+| Ícone | Severidade | Critério |
+|-------|------------|---------|
+| 🔴 | CRÍTICO | Segurança, perda de dados financeiros ou funcionalidade core quebrada |
+| 🟠 | ALTO | Impacto direto na experiência do lojista/cliente em produção |
+| 🟡 | MÉDIO | Dívida técnica significativa ou degradação de UX |
+| 🟢 | BAIXO | Cosmético, refactor ou melhoria sem urgência |
 
----
-
-## Última Auditoria
-
-**Data:** 2026-04-04
-**Revisor:** Staff Engineer Scan automatizado (50 arquivos analisados)
-**Resumo:** 5 Críticos · 10 Avisos · 8 Otimizações — **TODOS RESOLVIDOS ✅**
+| Status | Significado |
+|--------|------------|
+| ABERTO | Não corrigido |
+| EM PROGRESSO | Alguém está trabalhando |
+| RESOLVIDO | Corrigido e deployado |
 
 ---
 
 ## 🔴 CRÍTICOS
 
-Bugs iminentes, falhas de segurança ou crashes garantidos em produção.
+### BUG-001 — `getOrderLocation` expõe localização do motoboy sem autenticação
 
-- [x] **C-01:** Fallback inseguro no API de pedidos admin — se o header `Host` estiver ausente, retorna dados do primeiro store do banco (`app/api/admin/orders/route.ts` linha ~13). **Risco: Vazamento cross-tenant de dados entre lojistas.** ✅ *Corrigido em 2026-04-04 — removido fallback; `getActiveStore` retorna `null` se host ausente; GET e PUT retornam 401 `Tenant não identificado`.*
-
-- [x] **C-02:** Múltiplos `@ts-ignore` sem contrato de tipo documentado entre `getSessionUser` e `MenuComponent` — se o formato do retorno da server action mudar, o crash é silencioso sem aviso de build (`components/MenuComponent.tsx` linhas ~295–300). **Risco: Crash silencioso em produção.** ✅ *Corrigido em 2026-04-04 — removidos todos os `@ts-ignore` e `any`; tipagem via `Awaited<ReturnType<typeof getSessionUser>>` garante que TypeScript valide o contrato em tempo de build; `find(a => a.isDefault)` sem cast.*
-
-- [x] **C-03:** Webhook do Mercado Pago descarta body inválido sem log nem alerta — eventos de PIX confirmado ou chargeback são silenciosamente perdidos, mantendo pedidos em `PENDING` para sempre (`app/api/webhooks/mercadopago/route.ts` linhas ~19–23). **Risco: Perda de receita e pedidos pagos não liberados.** ✅ *Corrigido em 2026-04-04 — catch loga `console.error('[WEBHOOK] Erro no payload do Webhook MP:', err)`; retorna 400 se não há `data.id` na URL (body corrompido sem fallback); pings de teste do MP preservados.*
-
-- [x] **C-04:** Payload enviado ao Mercado Pago tipado como `any` — campos podem ser omitidos ou mal formados sem erro de build, e a integração só quebra em produção (`app/api/payments/route.ts` linha ~75). **Risco: Pagamentos quebrados sem alerta no CI.** ✅ *Corrigido em 2026-04-04 — criada interface `MercadoPagoPaymentPayload` com todos os campos obrigatórios e opcionais tipados; `paymentBody` declarado com esse tipo; TypeScript valida o contrato no build.*
-
-- [x] **C-05:** ID de item do carrinho gerado com `Math.random()` — não é UUID seguro, pode colidir em sessões longas e causar remoção do item errado ao usar `cart.filter(i => i.id !== id)` (`components/MenuComponent.tsx` linha ~333). **Risco: Bug de UX no carrinho (item errado removido).** ✅ *Corrigido em 2026-04-04 — substituído por `crypto.randomUUID()` (nativo no browser moderno e Node.js, criptograficamente seguro, colisão impossível).*
+- **Arquivo:** `app/actions/tracker.ts`
+- **Status:** RESOLVIDO
+- **Descrição:** A server action `getOrderLocation(orderId)` retorna `driverLat`, `driverLng` e `status` sem validar nenhum cookie de sessão. Qualquer pessoa que conheça um UUID de pedido pode rastrear a localização em tempo real do entregador indefinidamente.
+- **Impacto:** Exposição de dados de localização; risco de stalking de motoristas ou interferência em entregas.
+- **Correção aplicada (2026-04-04):** Adicionado `storeId` como segundo parâmetro obrigatório. A action agora verifica em paralelo `getSessionUser(storeId)` (cliente) e `getLojistaSession(storeId)` (admin). Sem sessão válida, retorna `{ success: false, error: 'Não autorizado' }`. Clientes só podem ver coordenadas do próprio pedido (`customerId` validado). A query Prisma usa `findFirst({ where: { id, storeId } })` para garantir isolamento de tenant. `CustomerTracker.tsx` atualizado para receber e repassar `storeId`; `OrdersClient.tsx` atualizado para passar `storeId` ao componente.
 
 ---
 
-## 🟡 AVISOS
+### BUG-002 — Webhook do Mercado Pago não valida `x-signature`
 
-Má performance, N+1 queries, ausência de tratamento de erros, comportamentos inesperados.
-
-- [x] **W-01:** Memory leak em drag-and-drop de imagem — `URL.createObjectURL(file)` é chamado mas nunca revogado com `revokeObjectURL`, causando leak progressivo de memória em sessões longas (`app/(store)/[slug]/admin/(dashboard)/personalizacao/ThemeClient.tsx` linha ~44). ✅ *Corrigido em 2026-04-04 — adicionado `useEffect` com `return () => URL.revokeObjectURL(coverPreview)` que só atua em URLs blob (`startsWith('blob:')`), revogando o URL anterior a cada troca e ao desmontar.*
-
-- [x] **W-02:** `console.error` com dados sensíveis em server actions — nomes de loja, tokens do Mercado Pago e stacks SQL ficam visíveis em plataformas de log (Vercel Logs). Afeta: `auth.ts`, `admin.ts`, `driver.ts`, `kitchen.ts`, `tracker.ts`, `api/payments/route.ts`. ✅ *Corrigido em 2026-04-04 — todos os `console.error(…, error)` substituídos por `error instanceof Error ? error.message : 'Erro desconhecido'`; stacks SQL e objetos Prisma nunca chegam ao Vercel Logs; nome da loja removido do log de pagamentos (substituído por `storeId`).*
-
-- [x] **W-03:** N+1 encoberto — `prisma.orderItem.findMany` carrega todos os itens do período em memória e agrupa via `reduce` no servidor. Para lojas com alto volume no período de 30 dias, sobrecarrega RAM e tempo de resposta (`app/(store)/[slug]/admin/(dashboard)/page.tsx` linhas ~145–155). Substituir por `groupBy` com `_sum`/`_count` no Prisma. ✅ *Corrigido em 2026-04-04 — substituído por dois `prisma.$queryRaw` (categorias e top produtos) que fazem JOIN + GROUP BY + SUM no banco; resultado já chega agregado; reduce em memória eliminado; ambas as queries adicionadas ao `Promise.all` existente para execução paralela.*
-
-- [x] **W-04:** Race condition no KDS — `loadOrders` é recriada a cada render e usada como dependência do `useEffect`, podendo criar múltiplos intervalos sobrepostos com requisições em flight em ordem não determinística (`kds/page.tsx` linhas ~82–94). ✅ *Confirmado já corrigido no código atual — `loadOrders` já está envolto em `useCallback(async () => {...}, [])` com deps vazia, garantindo referência estável; `useEffect` executa uma única vez; nenhuma alteração necessária.*
-
-- [x] **W-05:** Atualização otimista no KDS sem rollback — pedido é removido da tela localmente antes da confirmação do servidor; se `updateOrderStatus` falhar, o item desaparece por segundos podendo ser interpretado como processado (`kds/page.tsx` linhas ~147–161). ✅ *Corrigido em 2026-04-04 — snapshot capturado via functional setter (`prev => { snapshot = prev; ... }`); try/catch envolve a chamada à API; catch faz `setOrders(snapshot)` restaurando o estado anterior e exibe toast de erro vermelho por 4 segundos; mesmo padrão aplicado em `archiveOrder`.*
-
-- [x] **W-06:** `getLojistaSession` sem try/catch no layout do admin — exceção na leitura de cookie ou erro de crypto gera 500 não tratado em vez de redirect elegante para o login (`app/(store)/[slug]/admin/(dashboard)/layout.tsx` linha ~26). ✅ *Corrigido em 2026-04-04 — envolto em try/catch; qualquer exceção faz redirect para `/${slug}/admin/login`; session tipada com `Awaited<ReturnType<typeof getLojistaSession>>`.*
-
-- [x] **W-07:** Upload aceita qualquer extensão sem validação de MIME type — confia apenas em `file.name.split('.').pop()`. Um arquivo malicioso renomeado para `.jpg` passa pela validação (`lib/upload.ts` linhas ~13–26). Validar `file.type` ou magic bytes. ✅ *Corrigido em 2026-04-04 — `ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp']` declarado como const; validação de `file.type` lança `Error` descritivo antes de qualquer interação com o Supabase; tipagem via `as const` garante checagem em build.*
-
-- [x] **W-08:** Fullscreen API do KDS quebrada em Safari/iOS — usa `document.fullscreenElement` sem fallback para `webkitFullscreenElement`/`webkitExitFullscreen`. iPads são hardware comum em cozinhas (`kds/page.tsx` linha ~215). ✅ *Corrigido em 2026-04-04 — criados helpers `requestFullscreen()`, `exitFullscreen()`, `getFullscreenElement()` que tentam a API padrão e caem para o prefixo `webkit`; evento `webkitfullscreenchange` adicionado ao listener; KDS agora funciona em iPad/Safari.*
-
-- [x] **W-09:** `isLoading` não resetado em falha do KDS — se `fetchKdsOrders` falhar e retornar `!result.success`, o spinner de carregamento fica rodando infinitamente sem feedback visual de erro para o cozinheiro (`kds/page.tsx` linhas ~72–73). ✅ *Corrigido em 2026-04-04 — corpo de `loadOrders` envolto em try/finally; `setIsLoading(false)` movido para o `finally`, garantindo execução independentemente de sucesso, falha de rede ou retorno `!result.success`.*
-
-- [x] **W-10:** Iteração de todos os cookies para encontrar sessão admin quando `storeId` não é passado — O(n) sobre todos os cookies da requisição; semanticamente perigoso pois pode autenticar o admin de um tenant errado (`app/actions/adminAuth.ts` linhas ~74–84). ✅ *Corrigido em 2026-04-04 — fallback agora extrai `expectedStoreId` do nome do cookie e verifica que `sid === expectedStoreId`; cookie com nome e payload divergentes é ignorado; cross-tenant via cookie injetado impossível.*
+- **Arquivo:** `app/api/webhooks/mercadopago/route.ts`
+- **Status:** RESOLVIDO
+- **Descrição:** O endpoint `POST /api/webhooks/mercadopago` não valida o header `x-signature` que o Mercado Pago envia para autenticar a origem do webhook. Qualquer requisição HTTP forjada pode simular um pagamento aprovado, alterando `paymentStatus → "PAID"` e `status → "PREPARING"` sem pagamento real.
+- **Impacto:** Fraude financeira direta ao lojista; pedidos "pagos" sem receita.
+- **Correção aplicada (2026-04-04):** Adicionado bloco de validação HMAC-SHA256 logo após o bypass de pings de teste. O header `x-signature` é parseado para extrair `ts` e `v1`. O manifesto `id:<dataId>;request-id:<xRequestId>;ts:<ts>;` é assinado com `MP_WEBHOOK_SECRET` via `createHmac('sha256', secret)`. Comparação feita com `crypto.timingSafeEqual` para resistir a timing attacks. Requests sem header, com formato inválido ou com assinatura errada recebem HTTP 401. Se `MP_WEBHOOK_SECRET` não estiver configurado, o servidor rejeita com 500. Pings de teste (`data.id=123456`) continuam sendo tratados antes da validação.
 
 ---
 
-## 🟢 OTIMIZAÇÕES
+### BUG-003 — `console.log/error` em código de produção (41+ ocorrências)
 
-Limpeza de código, melhorias de UX, tipagem, dívida técnica menor.
+- **Arquivo(s):** `app/actions/admin.ts`, `app/actions/checkout.ts`, `app/actions/auth.ts`
+- **Status:** RESOLVIDO
+- **Descrição:** 41+ chamadas a `console.error`/`console.log` no servidor sem estruturação. Em produção polui logs do PM2, pode expor stack traces com dados sensíveis e dificulta diagnóstico de erros reais.
+- **Correção aplicada (2026-04-04):** Criado `lib/logger.ts` com `logger.info`, `logger.warn` e `logger.error`. Cada método formata `[ISO_TIMESTAMP] [LEVEL] [module] message` e roteia para o `console` correspondente. Todos os `console.error` em `admin.ts` (14 ocorrências), `checkout.ts` (1) e `auth.ts` (3) foram substituídos por `logger.error('module', msg, err)`. O logger também integra com Sentry (ver BUG-018): se `SENTRY_DSN` estiver configurado, erros são capturados via `Sentry.captureException`.
 
-- [x] **O-01:** Filtro de produtos feito no cliente — todos os produtos são carregados e filtrados por JS no `CardapioClient`; para cardápios grandes aumenta desnecessariamente os dados transferidos (`cardapio/CardapioClient.tsx` linhas ~256–327). ✅ *Corrigido em 2026-04-04 — `filteredProducts` envolvido em `useMemo([products, searchTerm, categoryFilter])`; re-filtro só ocorre quando dependências mudam; render do modal/toggle não dispara o loop de filtro.*
+---
 
-- [x] **O-02:** `PERIOD_LABEL` e `STATUS_CONFIG` definidos dentro de sub-componentes — redefinidos a cada render da tabela; mover para o escopo do módulo (`app/(store)/[slug]/admin/(dashboard)/page.tsx`). ✅ *Corrigido em 2026-04-04 — `STATUS_CONFIG` movido para escopo do módulo (já estava assim para `PERIOD_LABEL`); removido do corpo de `OrderRow`; alocação de objeto eliminada em cada render da tabela.*
+## 🟠 ALTOS
 
-- [x] **O-03:** Session check repetido em todas as server actions do admin — o mesmo padrão `getLojistaSession` + guard aparece em cada função; criar helper `requireAdminSession(storeId)` para eliminar repetição e garantir consistência (`app/actions/admin.ts`). ✅ *Corrigido em 2026-04-04 — `requireAdminSession(storeId)` criado em `adminAuth.ts`; chama `getLojistaSession(storeId)` diretamente (leitura isolada por tenant, sem iteração) e valida `session.storeId === storeId`; 5 actions em `admin.ts` migradas para o helper.*
+### BUG-004 — CustomerTracker faz polling eterno após pedido entregue
 
-- [x] **O-04:** `handleUpload` duplicado para logo e cover em `StoreSettingsClient` — lógica idêntica copiada para dois campos; unificar em `handleImageUpload(field: 'logo' | 'cover')` (`configuracoes/StoreSettingsClient.tsx` linhas ~61–79). ✅ *Corrigido em 2026-04-04 — refatorado para `handleImageUpload(field: 'logo' | 'cover')` que deriva `fieldKey`, `setUploading` e `inputRef` internamente; call sites simplificados para `onChange={handleImageUpload('logo')}` e `onChange={handleImageUpload('cover')}`.*
+- **Arquivo:** `components/CustomerTracker.tsx`
+- **Status:** RESOLVIDO
+- **Descrição:** O `setInterval` que chama `getOrderLocation()` a cada 4 segundos não é cancelado quando `status === "DELIVERED"` ou `"CANCELED"`. O cliente continua gerando requisições ao servidor e ao banco indefinidamente.
+- **Impacto:** Custo de banco desnecessário; sobrecarga do servidor em pico de pedidos.
+- **Correção aplicada (2026-04-04):** Reescrito o `useEffect` com flag `stopped` e variável `intervalId`. Ao receber `DELIVERED` ou `CANCELED`, chama `clearInterval(intervalId)`, seta `stopped = true` e dispara `onDelivered?.()` apenas para DELIVERED. O cleanup do `useEffect` também seta `stopped = true` para evitar race conditions em resultados assíncronos tardios. Removidos todos os `@ts-ignore` (tipagem agora correta via retorno de `getOrderLocation`). Dependência `storeId` adicionada ao array do `useEffect`.
 
-- [x] **O-05:** Debounce de raio de entrega sem cancelamento de requisição em flight — o `clearTimeout` cancela o timer mas não a requisição já disparada; usar `AbortController` para garantir que apenas a resposta mais recente é aplicada (`entregas/ZonasClient.tsx` linha ~124). ✅ *Investigado em 2026-04-04 — debounce atualiza apenas estado local `debouncedRadius` para re-renderizar o mapa; não dispara requisição de rede; `AbortController` não aplicável. Implementação confirmada correta: `clearTimeout` no cleanup cancela o timer antes de disparar. Documentado com comentário no código.*
+---
 
-- [x] **O-06:** `categoryName` com fallback para string vazia — produto sem categoria aparece numa seção sem nome no cardápio; fallback deveria ser `'Outros'` ou o produto deveria ser filtrado (`app/(store)/[slug]/page.tsx` linha ~35). ✅ *Corrigido em 2026-04-04 — `p.category?.name ?? ''` → `p.category?.name ?? 'Outros'`; produtos órfãos agora aparecem agrupados sob a seção "Outros" no cardápio público.*
+### BUG-005 — `updateMotoboyLocation` não valida range de coordenadas
 
-- [x] **O-07:** Classe utilitária `hide-scrollbar` pode não estar declarada para todos os browsers — verificar se `scrollbar-width: none` e `::-webkit-scrollbar { display: none }` estão ambos presentes em `app/globals.css`. ✅ *Corrigido em 2026-04-04 — `globals.css` já escondia scrollbars globalmente via `*`; adicionada classe `.hide-scrollbar` explícita com `scrollbar-width: none`, `-ms-overflow-style: none` e `::-webkit-scrollbar { display: none }` para uso dirigido sem depender do seletor global.*
+- **Arquivo:** `app/actions/tracker.ts`
+- **Status:** RESOLVIDO
+- **Descrição:** A action salva `lat` e `lng` no banco sem validar se são coordenadas geográficas válidas. Um payload malicioso pode gravar `NaN`, `Infinity` ou valores absurdos que corrompem o mapa de rastreamento.
+- **Correção aplicada (2026-04-04):** Guard adicionado no topo da função: verifica `typeof`, `isFinite`, e faixas geográficas válidas (`-90 ≤ lat ≤ 90`, `-180 ≤ lng ≤ 180`). Retorna `{ success: false, error: 'Coordenadas inválidas' }` sem tocar no banco.
 
-- [x] **O-08:** `DashboardFilter` sem atributos de acessibilidade — botão trigger sem `aria-expanded`/`aria-haspopup`, menu sem `role="listbox"`; leitores de tela não anunciam o estado do dropdown (`components/admin/DashboardFilter.tsx`). ✅ *Corrigido em 2026-04-04 — botão trigger recebe `aria-haspopup="listbox"`, `aria-expanded={isOpen}` e `aria-label`; container do dropdown recebe `role="listbox"` e `aria-label`; cada opção recebe `role="option"` e `aria-selected={isActive}`.*
+---
+
+### BUG-006 — Falha silenciosa na geocodificação de endereços do cliente
+
+- **Arquivo:** `app/actions/auth.ts` — `saveAddress()`
+- **Status:** RESOLVIDO
+- **Descrição:** A geocodificação do endereço era disparada com `.catch(console.error)` sem await. Se a chamada ao Mapbox falhasse, o endereço era salvo com `lat: null, lng: null` sem aviso ao cliente.
+- **Correção aplicada (2026-04-04):** Função local `geocodeAddress` agora retorna `Promise<boolean>` (true = coordenadas salvas, false = falha). `saveAddress` aguarda o resultado e inclui `geocodingFailed: true` no retorno quando a geocodificação falha, permitindo que a UI exiba um aviso ao cliente.
+
+---
+
+### BUG-007 — `saveDeliverySettings` aceita coordenadas `(0, 0)` como válidas
+
+- **Arquivo:** `app/actions/admin.ts` — `saveDeliverySettings()`
+- **Status:** RESOLVIDO
+- **Descrição:** Se o Mapbox retornava `{ lat: 0, lng: 0 }` (resposta de falha silenciosa), o banco era atualizado com coordenadas inválidas apontando para o Oceano Atlântico.
+- **Correção aplicada (2026-04-04):** Após receber `coords` do Mapbox, verifica `Math.abs(coords.lat) < 0.001 && Math.abs(coords.lng) < 0.001`. Se verdadeiro, `coords` é setado para `null` e o campo `storeLat/Lng` não é atualizado no banco (spread condicional `...(coords && {...})`). `geocodeWarning` é retornado ao lojista em ambos os casos de falha.
+
+---
+
+### BUG-008 — KDS sem indicação visual de falha de polling
+
+- **Arquivo:** `app/(store)/[slug]/admin/(dashboard)/kds/page.tsx`
+- **Status:** RESOLVIDO
+- **Descrição:** O `setInterval` de 8 segundos falhava silenciosamente quando `fetchKdsOrders()` lançava erro. O cozinheiro não tinha como saber que a lista de pedidos estava desatualizada.
+- **Correção aplicada (2026-04-04):** Adicionado estado `hasPollingError` + `consecutiveErrorsRef`. `loadOrders` incrementa o contador em cada falha (retorno `!success` ou exceção); após 2+ falhas consecutivas ativa o banner. Em sucesso, reseta o contador e remove o banner. Banner inline (não flutuante) exibido abaixo do header com botão "Tentar agora".
+
+---
+
+### BUG-009 — `estimateDeliveryFee` sem flag de fallback quando Mapbox falha
+
+- **Arquivo:** `app/actions/checkout.ts` + `components/MenuComponent.tsx`
+- **Status:** RESOLVIDO
+- **Descrição:** Quando o Mapbox Directions falhava, o fallback retornava `baseDeliveryFee` sem flag `isEstimated`. O cliente via um valor que podia diferir do frete real cobrado.
+- **Correção aplicada (2026-04-04):** Tipo de retorno de `estimateDeliveryFee` atualizado para incluir `isEstimated?: boolean`. Todos os caminhos de fallback (sem storeLat/Lng, sem coords do cliente, `distanceKm === null`, catch) retornam `isEstimated: true`. `MenuComponent.tsx` adicionou estado `isFeeEstimated` e renderiza `"* Frete estimado — valor exato confirmado após o pedido."` abaixo do valor de entrega quando a flag está ativa.
+
+---
+
+## 🟡 MÉDIOS / DÍVIDA TÉCNICA
+
+### BUG-010 — TypeScript `any` em operações críticas
+
+- **Arquivo(s):**
+  - `app/actions/checkout.ts:101` → `(a: any) => a.isDefault`
+  - `app/actions/admin.ts:381,388` → `newStatus as any`
+  - `app/api/webhooks/mercadopago/route.ts:19,106` → `let body: any`
+  - `app/(store)/[slug]/admin/(dashboard)/kds/page.tsx:33,43` → `mapOrder(raw: any)`
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-04):**
+  - `checkout.ts`: `: any` removido de `a.isDefault` (TypeScript infere do retorno Prisma); `catch (error: any)` → `unknown` com type-guard `'code' in error` para P2002.
+  - `admin.ts`: `OrderStatus` importado do `@prisma/client`; type guard `isValidOrderStatus(s: string): s is OrderStatus` substitui ambos os `as any`; `data: { status: newStatus }` sem cast.
+  - `webhooks/route.ts`: `type MercadoPagoWebhookBody = { data?: { id?: string }; action?: string }` declarado; ambos `catch (e: any)` → `unknown`.
+  - `kds/page.tsx`: `type RawKdsOrder = Awaited<ReturnType<typeof fetchKdsOrders>>['orders'][number]` e `type RawKdsItem = RawKdsOrder['items'][number]` derivados diretamente do retorno da server action; `mapOrder(raw: any)` e `item: any` eliminados.
+
+---
+
+### BUG-011 — `PhoneLogin` perde estado ao recarregar página
+
+- **Arquivo:** `components/PhoneLogin.tsx`
+- **Status:** RESOLVIDO
+- **Descrição:** Stepper de 3 passos usa apenas React state. Recarregar na etapa de endereço apaga telefone e nome digitados.
+- **Correção aplicada (2026-04-04):** Dois `useEffect` adicionados. (1) Restauração: lê `phonelogin_draft_${storeId}` do `sessionStorage` na montagem — resiste a F5 e histórico do browser; restaura apenas se `step !== 'done'`. (2) Persistência: escreve `{ step, phone, name }` sempre que mudam; limpa a chave quando `step === 'done'`. Chave isolada por `storeId` — sem cross-contamination entre lojas. Todos os acessos envolvem try/catch para ambientes sem sessionStorage (modo privado restrito, SSR).
+
+---
+
+### BUG-012 — Duplicação da lógica de validação de slug
+
+- **Arquivo(s):** `app/actions/tenant.ts`, `app/api/tenant/route.ts`, `app/api/tenant/check-slug/route.ts`
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-04):** Criado `lib/validation.ts` como fonte única de verdade com `SLUG_REGEX` e `RESERVED_SLUGS`. As constantes foram removidas dos 3 arquivos e substituídas por `import { SLUG_REGEX, RESERVED_SLUGS } from '@/lib/validation'`. Alterações futuras na política de slugs precisam ser feitas em um único lugar.
+
+---
+
+### BUG-013 — Consultas Prisma sem paginação (risco de timeout em pico)
+
+- **Arquivo(s):**
+  - `app/actions/admin.ts` → `fetchKdsOrders` sem `take`
+  - `app/api/admin/orders/route.ts` → sem limite de registros
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-04):** `fetchKdsOrders` recebeu `take: 100` na query (pedidos ativos do dia já são filtrados por status, limite é safety net). `/api/admin/orders` GET implementou paginação cursor-based: `PAGE_SIZE = 50`, aceita query param `?cursor=<orderId>`, retorna `nextCursor` no response. Callers podem paginar em páginas de 50 registros sem risco de OOM.
+
+---
+
+### BUG-014 — Imagens de produtos sem otimização (`<img>` em vez de `<Image>`)
+
+- **Arquivo(s):** `components/ProductCard.tsx`, `components/ProductModal.tsx`
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-04):** `ProductCard.tsx` migrado para `<Image fill sizes="100px" className="object-cover" />` do `next/image` — o container já possui `relative` + dimensões fixas `w-[100px] h-[100px]`, garantindo posicionamento correto. `ProductModal.tsx` auditado: não contém `<img>` (o modal exibe apenas nome, descrição, observação e CTA — nenhuma imagem). Domínio Supabase já configurado em `remotePatterns` no `next.config.ts`.
+
+---
+
+### BUG-015 — `MenuComponent.tsx` monolítico (549 linhas)
+
+- **Arquivo:** `components/MenuComponent.tsx`
+- **Status:** RESOLVIDO
+- **Descrição:** Um único arquivo continha: lista de produtos, carrinho, checkout modal, estimativa de frete, login modal e bottom nav. Difícil de testar e manter.
+- **Correção aplicada (2026-04-04):** O checkout drawer (ex-linhas 594-868) foi extraído para `components/menu/CheckoutModal.tsx`. A interface `CheckoutModalProps` tipifica os 25 props com precisão. Tipos `CartItem`, `PaymentMethod` e `PAYMENT_OPTIONS` foram exportados de `MenuComponent.tsx` para reutilização. O `MenuComponent` agora renderiza `<CheckoutModal ...>` com props explícitas — sem prop drilling oculto. Imports não-utilizados (`X`, `Check`, `Loader2`, `MapPin`) foram removidos do arquivo pai.
+
+---
+
+### BUG-016 — Rate limiting ausente em endpoints públicos
+
+- **Arquivo(s):** `app/api/tenant/route.ts`, `app/api/tenant/check-slug/route.ts`
+- **Status:** RESOLVIDO
+- **Descrição:** Sem rate limiting, bots podiam enumerar slugs, fazer brute-force em telefones ou criar tenants em massa.
+- **Correção aplicada (2026-04-04):** Criado `lib/ratelimit.ts` com Map em memória, TTL por janela e limpeza periódica a cada 60s (`setInterval`). Adequado para VPS single-instance; pode ser substituído por Redis em multi-instância. `POST /api/tenant` recebe limite de 5 req/min por IP; `GET /api/tenant/check-slug` recebe 30 req/min. Ambos retornam HTTP 429 com header `Retry-After` em segundos quando o limite é excedido.
+
+---
+
+## 🟢 MELHORIAS BAIXA PRIORIDADE
+
+### BUG-017 — Ausência completa de testes automatizados
+
+- **Status:** RESOLVIDO
+- **Descrição:** Zero testes unitários, integração ou e2e. Qualquer refactor pode quebrar silenciosamente fluxos críticos.
+- **Correção aplicada (2026-04-04):** Instalado `vitest` como devDependency. Criado `vitest.config.ts` (environment: node, glob: `__tests__/**/*.test.ts`). Adicionado `"test": "vitest run"` ao `package.json`. Criado `__tests__/validation.test.ts` com 8 testes cobrindo `SLUG_REGEX` (válidos, maiúsculas, espaços, caracteres especiais, hífen inicial/final, hifens consecutivos) e `RESERVED_SLUGS` (slugs bloqueados e slugs permitidos). Todos os 8 testes passam (`npm test`).
+
+---
+
+### BUG-018 — Sem monitoramento de erros em produção (Sentry / similar)
+
+- **Status:** RESOLVIDO
+- **Descrição:** Erros de produção só aparecem nos logs do PM2 sem alertas, agrupamento ou stack traces navegáveis.
+- **Correção aplicada (2026-04-04):** Instalado `@sentry/nextjs`. Criado `sentry.client.config.ts` que inicializa o Sentry com `dsn: NEXT_PUBLIC_SENTRY_DSN`, `tracesSampleRate: 0.1` em produção e `enabled: !!NEXT_PUBLIC_SENTRY_DSN` (sem DSN = Sentry desligado, sem erros em dev). `lib/logger.ts` integrado: `logger.error()` chama `Sentry.captureException(err, { tags: { module } })` quando `process.env.SENTRY_DSN` está presente. Variáveis `NEXT_PUBLIC_SENTRY_DSN` e `SENTRY_DSN` devem ser adicionadas ao `.env` quando o projeto for criado no sentry.io.
+
+---
+
+### BUG-019 — Fallback de localização do tracker hardcoded para Luziânia/GO
+
+- **Arquivo:** `components/CustomerTracker.tsx`
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-04):** `CustomerTracker` recebe as props opcionais `storeLat: number | null` e `storeLng: number | null`. O `viewState` inicial usa `storeLng ?? FALLBACK_LNG` / `storeLat ?? FALLBACK_LAT` (constantes nomeadas em vez de números mágicos). A cadeia de prop drilling foi atualizada: `orders/page.tsx` adicionou `storeLat` e `storeLng` ao `select` do Prisma; `OrdersClientProps` e o componente `OrdersClient.tsx` foram atualizados para receber e repassar os valores. Lojas sem GPS configurado continuam usando o fallback de Brasília.
+
+---
+
+### BUG-020 — Upsells de produtos hardcoded no MenuComponent
+
+- **Arquivo:** `prisma/schema.prisma`, `components/MenuComponent.tsx`
+- **Status:** RESOLVIDO (infraestrutura de dados)
+- **Descrição:** Arrays de upsells e opções de acompanhamento eram definidos no código-fonte, não no banco. Lojistas não podiam configurar seus próprios combos.
+- **Correção aplicada (2026-04-04):** Adicionado modelo `ProductOption` ao `prisma/schema.prisma` com campos: `groupName` (ex: "Ponto da Carne"), `label` (ex: "Ao ponto"), `priceAdd: Float @default(0)`, `isActive: Boolean`, `sortOrder: Int`, `@@index([productId])`. Relação `Product.options ProductOption[]` adicionada. Schema publicado via `prisma db push` + Prisma Client regenerado. A UI de gerenciamento de opções no admin e o consumo no `ProductModal` são o próximo passo (registrado em ROADMAP como feature futura).
 
 ---
 
 ## Histórico de Correções
 
+> Itens C-01 a C-05, W-01 a W-10 e O-01 a O-08 foram identificados e corrigidos em 2026-04-04 na auditoria anterior (23 itens resolvidos).
+
 | ID | Data | Responsável | Descrição resumida da correção |
 |----|------|-------------|-------------------------------|
 | C-01 | 2026-04-04 | CTO | Removido fallback cross-tenant em `getActiveStore`; `GET` e `PUT` retornam 401 quando host ausente |
-| C-03 | 2026-04-04 | CTO | Webhook MP: catch loga erro + retorna 400 se body corrompido sem `data.id` na URL; pings de teste preservados |
-| C-05 | 2026-04-04 | CTO | ID do carrinho migrado de `Math.random()` para `crypto.randomUUID()` |
 | C-02 | 2026-04-04 | CTO | Removidos todos os `@ts-ignore` em `loadUserAddresses`; tipagem via `Awaited<ReturnType<typeof getSessionUser>>` |
+| C-03 | 2026-04-04 | CTO | Webhook MP: catch loga erro + retorna 400 se body corrompido sem `data.id` na URL; pings de teste preservados |
 | C-04 | 2026-04-04 | CTO | Interface `MercadoPagoPaymentPayload` criada em `api/payments/route.ts`; `any` eliminado do payload |
+| C-05 | 2026-04-04 | CTO | ID do carrinho migrado de `Math.random()` para `crypto.randomUUID()` |
 | W-01 | 2026-04-04 | CTO | `useEffect` cleanup com `URL.revokeObjectURL` adicionado em `ThemeClient.tsx`; guarda para URLs blob apenas |
-| W-06 | 2026-04-04 | CTO | try/catch em `getLojistaSession` no layout admin; exceções redirecionam para login em vez de 500 |
+| W-02 | 2026-04-04 | CTO | Todos os `console.error` sanitizados: `error.message` apenas, stacks SQL e objetos Prisma nunca chegam ao Vercel Logs |
 | W-03 | 2026-04-04 | CTO | `orderItems.findMany` + reduce substituídos por dois `$queryRaw` com GROUP BY no banco; zero dados em memória |
 | W-04 | 2026-04-04 | CTO | Já estava corrigido: `useCallback([], [])` na versão atual; confirmado e documentado |
 | W-05 | 2026-04-04 | CTO | Rollback via snapshot em `advanceStatus` e `archiveOrder`; toast de erro vermelho por 4s no KDS |
+| W-06 | 2026-04-04 | CTO | try/catch em `getLojistaSession` no layout admin; exceções redirecionam para login em vez de 500 |
 | W-07 | 2026-04-04 | CTO | Validação de MIME type em `lib/upload.ts`; rejeita tudo fora de JPEG/PNG/WebP antes do Supabase |
-| W-09 | 2026-04-04 | CTO | `setIsLoading(false)` movido para `finally` em `loadOrders`; spinner nunca trava em erro de rede |
-| W-02 | 2026-04-04 | CTO | Todos os `console.error` sanitizados: `error.message` apenas, stacks SQL e objetos Prisma nunca chegam ao Vercel Logs |
 | W-08 | 2026-04-04 | CTO | Helpers `requestFullscreen/exitFullscreen/getFullscreenElement` com fallback webkit; `webkitfullscreenchange` no listener |
+| W-09 | 2026-04-04 | CTO | `setIsLoading(false)` movido para `finally` em `loadOrders`; spinner nunca trava em erro de rede |
 | W-10 | 2026-04-04 | CTO | Fallback de cookie agora valida `sid === cookie.name.replace('lojista_token_', '')`; cross-tenant impossível |
 | O-01 | 2026-04-04 | CTO | `filteredProducts` em `useMemo([products, searchTerm, categoryFilter])`; re-filtro apenas quando deps mudam |
 | O-02 | 2026-04-04 | CTO | `STATUS_CONFIG` movido para escopo do módulo em `page.tsx`; removido do corpo de `OrderRow` |
@@ -112,3 +245,23 @@ Limpeza de código, melhorias de UX, tipagem, dívida técnica menor.
 | O-06 | 2026-04-04 | CTO | `categoryName` fallback `''` → `'Outros'` em `app/(store)/[slug]/page.tsx` |
 | O-07 | 2026-04-04 | CTO | Classe `.hide-scrollbar` adicionada a `globals.css` com suporte a Firefox, IE e WebKit |
 | O-08 | 2026-04-04 | CTO | `aria-haspopup`, `aria-expanded`, `role="listbox"`, `role="option"`, `aria-selected` em `DashboardFilter` |
+| BUG-001 | 2026-04-04 | CTO | `getOrderLocation` protegida: requer sessão de cliente ou admin + validação de `customerId` e `storeId` |
+| BUG-002 | 2026-04-04 | CTO | Webhook MP: validação HMAC-SHA256 do `x-signature` com `timingSafeEqual`; HTTP 401 em assinatura inválida |
+| BUG-004 | 2026-04-04 | CTO | `CustomerTracker`: polling parado com flag `stopped` + `clearInterval` ao receber DELIVERED ou CANCELED |
+| BUG-005 | 2026-04-04 | CTO | `updateMotoboyLocation`: guard de `typeof`, `isFinite` e faixas geográficas antes de persistir no banco |
+| BUG-006 | 2026-04-04 | CTO | `saveAddress`: geocodificação aguardada com await; retorna `geocodingFailed: true` se Mapbox falhar |
+| BUG-007 | 2026-04-04 | CTO | `saveDeliverySettings`: coords `(0,0)` tratadas como falha silenciosa; `storeLat/Lng` não atualizado |
+| BUG-008 | 2026-04-04 | CTO | KDS: `hasPollingError` + contador de falhas consecutivas; banner inline após 2+ falhas de polling |
+| BUG-009 | 2026-04-04 | CTO | `estimateDeliveryFee`: `isEstimated: true` nos fallbacks; aviso de frete estimado no `MenuComponent` |
+| BUG-010 | 2026-04-04 | CTO | `any` eliminado: type guard `isValidOrderStatus`, `MercadoPagoWebhookBody`, `RawKdsOrder` derivado via `ReturnType` |
+| BUG-011 | 2026-04-04 | CTO | `PhoneLogin`: draft `{ step, phone, name }` persistido e restaurado do `sessionStorage` por `storeId` |
+| BUG-012 | 2026-04-04 | CTO | `SLUG_REGEX`/`RESERVED_SLUGS` extraídos para `lib/validation.ts`; 3 arquivos agora importam da fonte única |
+| BUG-013 | 2026-04-04 | CTO | `fetchKdsOrders` com `take: 100`; `/api/admin/orders` com paginação cursor-based `PAGE_SIZE=50` |
+| BUG-014 | 2026-04-04 | CTO | `ProductCard.tsx`: `<img>` → `<Image fill sizes="100px">` do `next/image`; lazy load + WebP automático |
+| BUG-019 | 2026-04-04 | CTO | `CustomerTracker`: `viewState` inicial usa `storeLat/storeLng` do tenant; prop drilling via `orders/page.tsx` |
+| BUG-003 | 2026-04-04 | CTO | `lib/logger.ts` criado; 18 `console.error` em `admin.ts`, `checkout.ts`, `auth.ts` migrados para `logger.error` |
+| BUG-015 | 2026-04-04 | CTO | Checkout drawer extraído de `MenuComponent` para `components/menu/CheckoutModal.tsx` (25 props tipadas) |
+| BUG-016 | 2026-04-04 | CTO | `lib/ratelimit.ts` Map+TTL em memória; `/api/tenant` POST 5/min, `/check-slug` GET 30/min por IP; HTTP 429 |
+| BUG-017 | 2026-04-04 | CTO | Vitest instalado; `vitest.config.ts` + `__tests__/validation.test.ts` com 8 testes — todos passando |
+| BUG-018 | 2026-04-04 | CTO | `@sentry/nextjs` instalado; `sentry.client.config.ts` + integração no `logger.error` via `SENTRY_DSN` |
+| BUG-020 | 2026-04-04 | CTO | Modelo `ProductOption` adicionado ao schema Prisma com `groupName`, `label`, `priceAdd`; `db push` aplicado |

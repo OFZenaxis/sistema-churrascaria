@@ -135,6 +135,18 @@ export default function ZonasClient({
   const [geocodeWarn, setGeocodeWarn] = useState<string | null>(null)
   const [pending,     startTransition] = useTransition()
 
+  // ── Ajuste manual do marcador ────────────────────────────────────────────
+  // isManualAdjRef: lógica (não causa re-render) — bloqueia o live preview por uma rodada
+  // manualAdj: UI — mostra o badge "Ajustado manualmente"
+  const isManualAdjRef = useRef(false)
+  const [manualAdj, setManualAdj] = useState(false)
+
+  const handleMarkerDragEnd = (lat: number, lng: number) => {
+    isManualAdjRef.current = true
+    setManualAdj(true)
+    setCoords({ lat, lng })
+  }
+
   // ── ViaCEP: dispara ao preencher 8 dígitos ───────────────────────────────
   const handleCepChange = async (raw: string) => {
     const digits = raw.replace(/\D/g, '').slice(0, 8)
@@ -180,9 +192,20 @@ export default function ZonasClient({
   // Dispara a Mapbox Geocoding API diretamente no client (NEXT_PUBLIC_MAPBOX_TOKEN).
   // Requisito mínimo: logradouro + numero + cidade — evita chamadas em endereço incompleto.
   // Flag `cancelled` previne setState após unmount ou nova digitação.
+  // Prioridade: se o lojista acabou de arrastar o pino manualmente, pula UMA rodada do
+  // live preview (isManualAdjRef) para não sobrescrever a posição escolhida por ele.
   const [previewLoading, setPreviewLoading] = useState(false)
   useEffect(() => {
     if (!logradouro || !numero || !cidade) return
+
+    // Usuário arrastou o pino → pula este ciclo e limpa o flag
+    if (isManualAdjRef.current) {
+      isManualAdjRef.current = false
+      return
+    }
+
+    // Nova digitação → cancela badge de ajuste manual
+    setManualAdj(false)
 
     let cancelled = false
     setPreviewLoading(true)
@@ -303,7 +326,7 @@ export default function ZonasClient({
           </div>
 
           {/* ── Logradouro + Número ───────────────────────────────── */}
-          <div className="grid grid-cols-[1fr_100px] gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_100px] gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
                 Logradouro
@@ -347,7 +370,7 @@ export default function ZonasClient({
           </div>
 
           {/* ── Cidade + UF ──────────────────────────────────────── */}
-          <div className="grid grid-cols-[1fr_80px] gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_80px] gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">
                 Cidade
@@ -383,7 +406,7 @@ export default function ZonasClient({
             </div>
           )}
 
-          {/* Status das coordenadas */}
+          {/* Status das coordenadas — 4 estados */}
           <AnimatePresence mode="wait">
             {previewLoading ? (
               <motion.div
@@ -393,6 +416,20 @@ export default function ZonasClient({
               >
                 <Loader2 className="w-4 h-4 text-blue-500 shrink-0 animate-spin" />
                 <p className="text-xs font-bold text-blue-700">Geocodificando endereço...</p>
+              </motion.div>
+            ) : manualAdj && coords ? (
+              <motion.div
+                key="manual"
+                initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                className="flex items-center gap-2.5 bg-violet-50 border border-violet-200 rounded-xl px-4 py-2.5"
+              >
+                <MapPin className="w-4 h-4 text-violet-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-violet-800">Ajustado manualmente</p>
+                  <p className="text-[11px] text-violet-600 font-mono mt-0.5">
+                    {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                  </p>
+                </div>
               </motion.div>
             ) : coords ? (
               <motion.div
@@ -436,6 +473,7 @@ export default function ZonasClient({
                   lat={coords.lat}
                   lng={coords.lng}
                   steps={simulatorSteps}
+                  onMarkerDragEnd={handleMarkerDragEnd}
                 />
               </motion.div>
             )}
@@ -457,7 +495,7 @@ export default function ZonasClient({
           </div>
         </div>
         <div className="px-6 py-5">
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <MoneyInput
               label="Valor Base"
               hint="Cobrado em qualquer distância"
@@ -527,7 +565,7 @@ export default function ZonasClient({
             Defina um raio máximo para ver a simulação.
           </p>
         ) : (
-          <div className={`grid gap-4 ${simulatorSteps.length === 3 ? 'grid-cols-3' : simulatorSteps.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <div className={`grid gap-4 ${simulatorSteps.length === 3 ? 'grid-cols-1 sm:grid-cols-3' : simulatorSteps.length === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             {simulatorSteps.map((km, idx) => {
               const fee = parseNum(baseFeeInput) + km * parseNum(perKmInput)
               const style = stepStyle(idx, simulatorSteps.length)

@@ -6,317 +6,310 @@
 
 ---
 
-## Variáveis de Ambiente
+## 1. Stack Técnica
 
-Copie `.env.example` e preencha antes de rodar o projeto. **Nunca comite valores reais.**
+| Camada | Tecnologia | Versão | Observação |
+|--------|-----------|--------|-----------|
+| Framework | Next.js | 16.2.1 | App Router — `proxy.ts` em vez de `middleware.ts` |
+| Runtime | React | 19.2.4 | Server Components por padrão |
+| Linguagem | TypeScript | 5.x | Strict mode habilitado |
+| ORM | Prisma | 5.22.0 | Client + Migrate + Studio |
+| Banco de Dados | PostgreSQL | via Supabase | pgBouncer connection pooler |
+| Autenticação | HMAC-SHA256 customizado | — | Cookies assinados nativamente (sem NextAuth/JWT externo) |
+| Estilização | Tailwind CSS | 4.x | PostCSS, sem UI library (custom design system) |
+| Animações | Framer Motion | 12.38.0 | AnimatePresence + motion |
+| Ícones | Lucide React | 1.7.0 | Única biblioteca de ícones permitida |
+| Gráficos | Recharts | 3.8.1 | Dashboard financeiro do admin |
+| Mapas | Mapbox GL JS + react-map-gl | 3.20.0 / 8.1.0 | Vitrine + Admin |
+| Geo cálculos | @turf/turf | 7.3.4 | Cálculo de distâncias e raio de entrega |
+| Pagamentos | Mercado Pago SDK | 2.12.0 (server) + 1.0.7 (react) | Por tenant (chaves isoladas) |
+| Storage | Supabase Storage | @supabase/supabase-js 2.101.1 | CDN via Supabase / Cloudflare |
+| Hashing | bcryptjs | 3.0.3 | Senhas de lojistas (cost factor 12) |
 
-### Banco de Dados (Prisma + PostgreSQL)
+---
 
-```env
-DATABASE_URL="postgresql://user:password@host:5432/dbname?schema=public"
-# URL principal — usada pelo Prisma em runtime
+## 2. Variáveis de Ambiente
 
-DIRECT_URL="postgresql://user:password@host:5432/dbname?schema=public"
-# URL direta (sem pooler) — usada pelo prisma migrate e seed.
-# Em produção com Supabase, DATABASE_URL usa o pgBouncer (pooled)
-# e DIRECT_URL aponta direto para o banco (necessário para migrations).
+> Arquivo de referência: `.env.example` na raiz do projeto.
+> ⚠️ NUNCA comitar o `.env` real. Use `.env.local` para desenvolvimento.
+
+### Obrigatórias (sem estas, o servidor não inicializa)
+
+| Variável | Exemplo/Formato | Uso | Onde é lida |
+|----------|----------------|-----|------------|
+| `DATABASE_URL` | `postgresql://...@aws-...supabase.co:6543/postgres?pgbouncer=true` | Conexão runtime via Prisma Client (pgBouncer) | `lib/prisma.ts` |
+| `DIRECT_URL` | `postgresql://...@aws-...supabase.co:5432/postgres` | Prisma Migrate e Seed (conexão direta, sem pooler) | `prisma/schema.prisma` |
+| `COOKIE_SECRET` | Base64 string ≥ 64 bytes | HMAC-SHA256 para assinar/verificar cookies de sessão. Boot guard: falha na inicialização se ausente | `lib/session.ts` |
+| `NEXT_PUBLIC_APP_URL` | `https://saiudelivery.com.br` | URLs absolutas para webhooks, redirecionamentos | `app/actions/checkout.ts`, hooks MP |
+| `NEXT_PUBLIC_BASE_DOMAIN` | `saiudelivery.com.br` | Roteamento multi-tenant por subdomínio | `proxy.ts`, `AdminSidebar.tsx` |
+
+### Mercado Pago
+
+| Variável | Formato | Uso | Escopo |
+|----------|---------|-----|--------|
+| `NEXT_PUBLIC_MP_PUBLIC_KEY` | `APP_USR-...` | Payment Brick no frontend (global fallback) | Client |
+| `MP_ACCESS_TOKEN` | `APP_USR-...` | SDK Mercado Pago backend (global fallback) | Server |
+| `MP_WEBHOOK_SECRET` | String aleatória | Validação HMAC de webhooks ⚠️ NÃO implementado ainda | Server |
+
+> **Multi-tenant:** Cada loja tem suas próprias chaves MP em `StorePaymentConfig` (tabela `store_payment_config`). As variáveis globais acima são fallback para lojas sem configuração própria.
+
+### Supabase
+
+| Variável | Uso | Escopo |
+|----------|-----|--------|
+| `NEXT_PUBLIC_SUPABASE_URL` | URL do projeto Supabase | Client + Server |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Chave anônima (respeita RLS) | Client (upload de imagens pelo usuário) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Chave admin (bypassa RLS) | Server actions de upload (`actions/upload.ts`) |
+
+### Mapbox
+
+| Variável | Uso | Escopo |
+|----------|-----|--------|
+| `NEXT_PUBLIC_MAPBOX_TOKEN` | Geocoding API + Directions API + Renderização de mapas | Client + Server |
+
+> Um único token serve todas as finalidades. Bucket está configurado no painel Mapbox com restrição de domínio recomendada.
+
+---
+
+## 3. Banco de Dados
+
+### Configuração Prisma
+
+```
+Provider: postgresql
+Pooler (runtime): DATABASE_URL — porta 6543 via pgBouncer (Supabase)
+Direto (migrations): DIRECT_URL — porta 5432 (conexão sem pooler)
 ```
 
-### Segurança
+**Por que dois URLs?**
+pgBouncer (porta 6543) não suporta comandos DDL como `ALTER TABLE`. O Prisma exige `DIRECT_URL` para rodar `prisma migrate deploy` e `prisma db seed`.
 
-```env
-COOKIE_SECRET="uma-string-aleatoria-longa-minimo-32-chars"
-# Segredo HMAC-SHA256 para assinar cookies de sessão.
-# OBRIGATÓRIO: o servidor recusa iniciar sem esta variável (boot guard em lib/session.ts).
-# Gere com: openssl rand -base64 32
+### Modelos Principais
+
+| Model | Tabela | Papel |
+|-------|--------|-------|
+| `Store` | `store` | Tenant principal. Contém toda config da loja |
+| `User` | `user` | Staff (ADMIN, MANAGER, DRIVER, SUPER_ADMIN) |
+| `Customer` | `customer` | Cliente final (composite unique: storeId + phone) |
+| `Address` | `address` | Endereço de entrega do cliente (com lat/lng) |
+| `Category` | `category` | Categoria de produto (pertence a Store) |
+| `Product` | `product` | Item do cardápio |
+| `Order` | `order` | Pedido (centro do sistema, contém GPS do motoboy) |
+| `OrderItem` | `order_item` | Linha de pedido (produto + quantidade + preço snapshot) |
+| `StorePaymentConfig` | `store_payment_config` | Chaves MP por tenant (1:1 com Store) |
+| `DeliveryZone` | `delivery_zone` | Zonas fixas de entrega (modelo legado) |
+| `Delivery` | `delivery` | Registro de entrega (motorista, timestamps) |
+
+### Migrations
+
+Local: `prisma/migrations/`
+Última migration aplicada: `20260401162235_add_store_branding`
+
+Rodar migration em produção:
+```bash
+npx prisma migrate deploy
 ```
 
-### Supabase Storage (Upload de Imagens)
+### Seed
 
-```env
-NEXT_PUBLIC_SUPABASE_URL="https://xxxxxxxxxxxx.supabase.co"
-# URL pública do projeto Supabase (usada no client-side upload)
-
-NEXT_PUBLIC_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-# Chave anônima pública (RLS do bucket deve ser configurado corretamente)
-
-SUPABASE_SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
-# Chave de serviço (privilégio total — apenas server-side, nunca expor ao client)
-```
-
-### Mapbox (Mapas e Geocodificação)
-
-```env
-NEXT_PUBLIC_MAPBOX_TOKEN="pk.eyJ1IjoiLi4uIiwiYSI6Ii4uLiJ9.xxxxx"
-# Token público do Mapbox (usado em MapboxGL no browser e geocodificação server-side)
-# Criar em: https://account.mapbox.com/
-# Escopos necessários: styles:read, tiles:read, geocoding, directions
-```
-
-### Plataforma
-
-```env
-NEXT_PUBLIC_APP_URL="https://saiudelivery.com.br"
-# URL base pública da plataforma (usada para montar links absolutos)
-# Em desenvolvimento: http://localhost:3000
+```bash
+npx ts-node --compiler-options '{"module":"CommonJS"}' prisma/seed.ts
 ```
 
 ---
 
-## Banco de Dados
+## 4. Integrações Externas
 
-**Provider:** PostgreSQL (compatível com Supabase, Neon, Railway, Render)
+### 4.1 Mercado Pago
 
-**ORM:** Prisma 5.22 com `prisma-client-js`
+| Item | Detalhe |
+|------|---------|
+| SDK React | `@mercadopago/sdk-react@1.0.7` — Payment Brick (frontend) |
+| SDK Backend | `mercadopago@2.12.0` — criação de preferências, consulta de pagamento |
+| Rota de criação | `POST /api/payments` |
+| Webhook | `POST /api/webhooks/mercadopago?storeId=X&type=payment&data.id=Y` |
+| Modelo de chaves | Por tenant: `StorePaymentConfig.mpAccessToken` + `mpPublicKey` |
+| Fluxo PIX | API cria preferência → retorna `qr_code` + `qr_code_base64` → exibido no frontend |
+| Fluxo Cartão | Payment Brick tokeniza cartão no frontend → backend cria pagamento com token |
+| ⚠️ Pendente | Validação de `x-signature` no webhook (BUG-002) |
 
-### Configuração especial de produção (Supabase)
+### 4.2 Mapbox
 
-O schema usa `directUrl` separado de `url` para suportar o pgBouncer do Supabase:
+| Item | Detalhe |
+|------|---------|
+| Geocoding API | `https://api.mapbox.com/geocoding/v5/mapbox.places/{address}.json` — converte endereço em lat/lng |
+| Directions API | `https://api.mapbox.com/directions/v5/mapbox/driving/{lng,lat;lng,lat}` — distância de direção real em KM |
+| Mapa interativo | `react-map-gl@8.1.0` + `mapbox-gl@3.20.0` — exibição do mapa na vitrine, admin e tracker |
+| Token | `NEXT_PUBLIC_MAPBOX_TOKEN` (único para todos os usos) |
+| Uso | Admin (mapa de raio de entrega + marcador arrastável), Customer Tracker, Admin Entregas |
 
-```prisma
-datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")    // pooled (pgBouncer) — para queries em runtime
-  directUrl = env("DIRECT_URL")      // direto — para migrations e seed
-}
+### 4.3 ViaCEP
+
+| Item | Detalhe |
+|------|---------|
+| URL | `https://viacep.com.br/ws/{CEP}/json/` |
+| Uso | Auto-preenchimento de endereço no admin (aba Entregas) ao digitar CEP |
+| Autenticação | Nenhuma (API pública e gratuita) |
+| Tratamento de erro | CEP inválido: campo `erro: true` na resposta |
+
+### 4.4 Supabase Storage
+
+| Item | Detalhe |
+|------|---------|
+| Bucket | `saiu-media` |
+| Client-side | Upload de imagens de produto pelo lojista (usa anon key + RLS) |
+| Server-side | Upload de logo/cover da loja via `SUPABASE_SERVICE_ROLE_KEY` (bypassa RLS) |
+| CDN | `https://rbnzcxbzrivevteiooad.supabase.co/storage/v1/object/public/saiu-media/...` |
+| Tipos aceitos | `image/jpeg`, `image/png`, `image/webp` |
+| Tamanho máximo | 5 MB (server-side), sem limite explícito client-side |
+| Formato de path | Client: `{storeId}/{timestamp}.{ext}` — Server: `covers/cover-{storeId}-{timestamp}.{ext}` |
+
+---
+
+## 5. Roteamento Multi-Tenant
+
+### Arquitetura
+
+O sistema usa subdomínios por tenant. O `proxy.ts` na raiz intercepta todas as requisições antes do Next.js resolver rotas:
+
+```
+saiu delivery.com.br          → app/(marketing)/page.tsx     (landing)
+saiudelivery.com.br/cadastro  → app/(marketing)/cadastro/    (registro de loja)
+minha-loja.saiudelivery.com.br → app/(store)/[slug]/page.tsx  (vitrine)
+customdomain.com.br            → app/(store)/[slug]/page.tsx  (domínio próprio)
 ```
 
-### Comandos essenciais
+### proxy.ts — Lógica de Decisão
+
+```
+1. É arquivo estático? (_next, .) → Ignorar
+2. É domínio raiz (BASE_DOMAIN, www, localhost)? → Servir app/(marketing)
+3. É subdomínio (*.BASE_DOMAIN)?
+   → Extrair slug → Rewrite para /{slug}/
+   → Rota /admin/* sem cookie → Redirect para /admin/login
+4. É domínio customizado?
+   → Usar hostname como slug (via tenantWhere)
+   → Rewrite para /{hostname}/
+```
+
+### Cookies de Sessão (isolados por tenant)
+
+| Cookie | Formato | Conteúdo | Validade |
+|--------|---------|---------|---------|
+| `session_token_{storeId}` | `payload.assinatura` HMAC | `storeId\|phone` | 30 dias |
+| `lojista_token_{storeId}` | `payload.assinatura` HMAC | `userId\|storeId\|role` | 7 dias |
+
+---
+
+## 6. Deploy e Ambiente de Produção
+
+### Ambiente Atual (inferido)
+
+| Item | Configuração |
+|------|-------------|
+| Hospedagem | VPS (inferido por uso de PM2 nos scripts) |
+| Process Manager | PM2 |
+| Build | `npm run build` → `prisma generate && next build` |
+| Start | `npm start` → `next start` |
+
+### Cache de Assets (next.config.ts)
+
+| Tipo | Cache-Control |
+|------|-------------|
+| `/_next/static/*` | `public, max-age=31536000, immutable` (1 ano) |
+| `icons/*` | `public, max-age=86400, stale-while-revalidate=86400` (1 dia) |
+| HTML + APIs | `no-store, no-cache, must-revalidate` (sem cache) |
+
+### Empacotamento Especial
+
+`next.config.ts` inclui `transpilePackages: ['mapbox-gl', 'react-map-gl', '@vis.gl/react-mapbox']` para compatibilidade com o bundler do Next.js.
+
+---
+
+## 7. Segurança
+
+### Implementações Corretas
+
+- ✅ **HMAC-SHA256** com `timingSafeEqual` para verificar cookies (previne timing attacks)
+- ✅ **bcryptjs cost 12** para hashing de senhas (bom balanço segurança/performance)
+- ✅ **httpOnly + secure + sameSite:strict** em todos os cookies
+- ✅ **Isolamento multi-tenant**: toda query Prisma filtra por `storeId`
+- ✅ **Transações atômicas** para criação de Store + User
+- ✅ **SERVICE_ROLE_KEY** usado apenas em server actions (nunca exposto ao client)
+- ✅ **Dados sensíveis** (`mpAccessToken`, `password`, `COOKIE_SECRET`) nunca saem do servidor
+
+### Vulnerabilidades Abertas (ver BUG_TRACKER.md)
+
+- ⚠️ **BUG-002**: Webhook MP sem validação de assinatura → risco de fraude
+- ⚠️ **BUG-001**: `getOrderLocation` sem autenticação → exposição de GPS
+- ⚠️ **BUG-016**: Sem rate limiting em endpoints públicos → brute force possível
+
+---
+
+## 8. Dependências Completas (package.json)
+
+### Produção
+
+```
+@headlessui/react@2.2.9        — Componentes acessíveis (dropdowns, dialogs)
+@mercadopago/sdk-react@1.0.7   — Payment Brick (frontend MP)
+@supabase/supabase-js@2.101.1  — Storage client
+@turf/turf@7.3.4               — Cálculos geoespaciais (distância, raio)
+bcryptjs@3.0.3                 — Hash de senhas
+framer-motion@12.38.0          — Animações (AnimatePresence, motion)
+lucide-react@1.7.0             — Ícones (única lib de ícones)
+mapbox-gl@3.20.0               — Renderização de mapas interativos
+mercadopago@2.12.0             — SDK backend Mercado Pago
+next@16.2.1                    — Framework (App Router)
+react@19.2.4                   — UI
+react-dom@19.2.4               — DOM renderer
+react-map-gl@8.1.0             — Wrapper React para Mapbox GL
+react-markdown@10.1.0          — Renderização de markdown (ex: descrições)
+recharts@3.8.1                 — Gráficos do dashboard
+remark-gfm@4.0.1               — GitHub Flavored Markdown para react-markdown
+@prisma/client@5.22.0          — ORM client gerado
+```
+
+### Desenvolvimento
+
+```
+@tailwindcss/postcss@4         — Integração Tailwind + PostCSS
+@types/node@20                 — Tipos Node.js
+@types/react@19                — Tipos React
+@types/react-dom@19            — Tipos React DOM
+eslint@9                       — Linter
+eslint-config-next             — Regras ESLint do Next.js
+prisma@5.22.0                  — CLI do Prisma
+tailwindcss@4                  — CSS utility framework
+ts-node@10.9.2                 — Execução TypeScript (seed, scripts)
+typescript@5                   — Compilador TypeScript
+```
+
+---
+
+## 9. Checklist de Setup (Novo Ambiente)
 
 ```bash
-# Gerar cliente Prisma após mudar o schema
+# 1. Instalar dependências
+npm install
+
+# 2. Configurar variáveis de ambiente
+cp .env.example .env.local
+# Preencher: DATABASE_URL, DIRECT_URL, COOKIE_SECRET, NEXT_PUBLIC_*, etc.
+
+# 3. Rodar migrations
+npx prisma migrate deploy
+
+# 4. Gerar Prisma Client
 npx prisma generate
 
-# Criar e aplicar migration
-npx prisma migrate dev --name nome-da-migration
+# 5. Popular banco (opcional, apenas dev)
+npx ts-node --compiler-options '{"module":"CommonJS"}' prisma/seed.ts
 
-# Aplicar migrations em produção (sem interatividade)
-npx prisma migrate deploy
+# 6. Rodar em desenvolvimento
+npm run dev
 
-# Popular banco com dados iniciais
-npx prisma db seed
-
-# Inspecionar banco visualmente
-npx prisma studio
-```
-
----
-
-## Supabase Storage
-
-**Uso:** Upload de logos, banners e imagens de produtos dos tenants.
-
-**Bucket recomendado:** `store-assets` (público, com RLS permissiva para leitura, restritiva para escrita)
-
-**Fluxo de upload (`lib/upload.ts`):**
-1. Client cria `FormData` com o arquivo
-2. Chama server action que usa `SUPABASE_SERVICE_ROLE_KEY` para bypass de RLS
-3. Arquivo salvo em `/{storeId}/{filename}` dentro do bucket
-4. URL pública retornada e salva no banco (`Store.logoUrl`, `Store.coverImageUrl`, `Product.imageUrl`)
-
-**Aviso de segurança (W-07 no BUG_TRACKER):** Validação atual confia apenas na extensão do arquivo. Implementar verificação de MIME type.
-
----
-
-## Mercado Pago
-
-**Integração:** Cada tenant configura suas próprias credenciais. Zero credenciais compartilhadas entre lojas.
-
-### Credenciais por tenant
-
-Armazenadas em `StorePaymentConfig` (1:1 com `Store`):
-
-```
-mpAccessToken    — token de acesso privado (server-side only, nunca exposto ao client)
-mpPublicKey      — chave pública (passada ao Bricks client-side)
-pixDiscountPercent — desconto opcional para pagamento via PIX
-```
-
-### Fluxo PIX
-
-```
-1. Cliente seleciona PIX no checkout
-2. submitOrder() → cria Order no banco com paymentMethod='PIX'
-3. Redirect → /[slug]/pagamento/[id]?method=PIX
-4. PaymentPixClient → POST /api/payments { orderId, payment_method_id: 'pix' }
-5. API busca mpAccessToken da loja, chama MP API → retorna { qr_code, qr_code_base64 }
-6. QR code exibido ao cliente
-7. Polling: GET /api/orders/[id]/status a cada 4s
-8. MP dispara webhook: POST /api/webhooks/mercadopago
-9. Webhook valida evento, consulta MP API, atualiza Order.paymentStatus='approved'
-10. Próximo poll detecta aprovação → redirect /[slug]/pedido/[id]
-```
-
-### Fluxo Cartão Online
-
-```
-1. submitOrder() → cria Order com paymentMethod='CARD_ONLINE'
-2. Redirect → /[slug]/pagamento/[id]?method=CARD_ONLINE
-3. PaymentClient (MP Bricks) inicializado com mpPublicKey
-4. Cliente preenche dados do cartão no iframe do MP
-5. onSubmit → POST /api/payments com token do cartão + orderId
-6. API processa pagamento, retorna status
-7. Se approved/in_process → resolve Brick → redirect /[slug]/pedido/[id]
-```
-
-### Fluxo Presencial (CASH / CARD_MACHINE)
-
-```
-submitOrder() → cria Order → redirect direto /[slug]/pedido/[id]
-Sem etapa de pagamento online.
-```
-
-### Webhook — `/api/webhooks/mercadopago`
-
-Recebe notificações do tipo `payment`. Fluxo:
-1. Parse do body JSON
-2. Valida `body.type === 'payment'`
-3. Busca `paymentId` em `body.data.id`
-4. Consulta MP API: `GET /v1/payments/{paymentId}`
-5. Extrai `external_reference` (= `orderId`)
-6. Busca `Order` + `Store` (para pegar `mpAccessToken`)
-7. Se `payment.status === 'approved'`:
-   - `Order.paymentStatus = 'approved'`
-   - `Order.status = 'PREPARING'`
-8. Retorna 200
-
-**Ponto crítico:** Ver **C-03** no `BUG_TRACKER.md` — body inválido descartado silenciosamente.
-
----
-
-## Mapbox
-
-**Uso:** Geocodificação de endereços, cálculo de distância para frete, mapa do motoboy, visualização de zonas de entrega.
-
-**Token:** `NEXT_PUBLIC_MAPBOX_TOKEN` (único token, usado tanto server-side quanto client-side)
-
-**Serviços utilizados:**
-- **Geocoding API** — converte `storeAddress` e endereço do cliente em coordenadas lat/lng
-- **Directions API** — rota do motoboy ao cliente (atualizada a cada 30s)
-- **MapboxGL JS** — renderização do mapa no browser (motoboy + admin de entregas)
-
-**Cálculo de frete (`estimateDeliveryFee`):**
-```
-distanceKm = haversine(storeLat/Lng, customerLat/Lng)
-fee = baseDeliveryFee + (distanceKm * deliveryFeePerKm)
-outOfRange = distanceKm > maxDeliveryRadius
-```
-
----
-
-## ViaCEP
-
-**Uso:** Lookup automático de endereço a partir do CEP no `PhoneLogin.tsx`.
-
-**Endpoint:** `GET https://viacep.com.br/ws/{cep}/json/`
-
-**Dados retornados usados:** `logradouro` (rua), `bairro`, `localidade` (cidade), `uf` (estado).
-
-Nenhuma chave de API necessária — serviço público gratuito.
-
----
-
-## Deploy — Hostinger (Node.js / hPanel)
-
-**Domínio de produção:** `https://saiudelivery.com.br`
-**Atualizado em:** 2026-04-04
-
-### Pré-requisitos no hPanel
-
-1. **Node.js ativado** no painel da Hostinger (hPanel → Node.js → Enable)
-2. **Versão Node.js:** 20 LTS ou superior
-3. **Porta da aplicação:** configurar o `startup file` para apontar para o servidor Next.js
-4. **SSL:** ativar Let's Encrypt gratuito pelo hPanel → SSL
-
-### Variáveis de ambiente no hPanel
-
-Configurar todas as variáveis do `.env.example` em **hPanel → Node.js → Environment Variables**:
-
-```
-NODE_ENV=production
-NEXT_PUBLIC_APP_URL=https://saiudelivery.com.br
-NEXT_PUBLIC_BASE_DOMAIN=saiudelivery.com.br
-DATABASE_URL=postgresql://...
-DIRECT_URL=postgresql://...
-COOKIE_SECRET=<string aleatória ≥ 32 chars>
-NEXT_PUBLIC_SUPABASE_URL=...
-NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-SUPABASE_SERVICE_ROLE_KEY=...
-NEXT_PUBLIC_MAPBOX_TOKEN=...
-MP_ACCESS_TOKEN=...
-MP_WEBHOOK_SECRET=...
-```
-
-### Deploy step-by-step
-
-```bash
-# 1. No servidor (via SSH ou terminal do hPanel)
-git pull origin main
-
-# 2. Instalar dependências de produção
-npm ci --omit=dev
-
-# 3. Aplicar migrations (sem interatividade)
-npx prisma migrate deploy
-
-# 4. Build do Next.js
+# 7. Build e produção
 npm run build
-
-# 5. Iniciar o servidor
 npm start
-# ou configurar PM2 para reinício automático:
-# pm2 start npm --name "saiudelivery" -- start
-# pm2 save && pm2 startup
 ```
-
-### Build script (`package.json`)
-
-```json
-"build": "prisma generate && prisma migrate deploy && next build"
-```
-
-Garante que o Prisma Client é gerado e as migrations aplicadas antes do build.
-
-### Porta e Proxy Reverso
-
-O Next.js sobe na porta `3000` por padrão. O hPanel/Nginx faz proxy reverso da porta 80/443 para 3000.
-Se necessário mudar a porta: `PORT=8080 npm start`.
-
-Nunca exponha a porta 3000 diretamente — sempre via Nginx com HTTPS.
-
-### DNS — Configuração do domínio e subdomínios
-
-No painel do registrador de domínio:
-
-```
-# Domínio raiz → marketing site
-A     @             → IP_DO_SERVIDOR_HOSTINGER
-CNAME www           → saiudelivery.com.br
-
-# Subdomínios de tenants (wildcard)
-A     *             → IP_DO_SERVIDOR_HOSTINGER
-```
-
-O wildcard `*.saiudelivery.com.br` permite que qualquer `slug.saiudelivery.com.br`
-chegue ao servidor e seja roteado pelo proxy para o tenant correto.
-
-### `next.config.ts`
-
-`images.remotePatterns` inclui o domínio do Supabase para que `next/image` funcione
-com URLs de upload. Verificar se o hostname do bucket está correto.
-
----
-
-## Segurança — Checklist de Produção
-
-- [ ] `COOKIE_SECRET` definido com pelo menos 32 caracteres aleatórios gerados via `openssl rand -base64 32`
-- [ ] `SUPABASE_SERVICE_ROLE_KEY` **nunca** exposto em variáveis `NEXT_PUBLIC_`
-- [ ] `mpAccessToken` de cada tenant armazenado apenas no banco, nunca no client
-- [ ] RLS do bucket Supabase: leitura pública, escrita apenas via service role
-- [ ] Webhook do Mercado Pago: validar `X-Signature` do MP (ver BUG_TRACKER)
-- [ ] HTTPS via Let's Encrypt configurado no hPanel antes de apontar o DNS
-- [ ] Cookies com `secure: true` e `sameSite: 'strict'` em produção (já implementado)
-- [ ] `NODE_ENV=production` definido no hPanel — ativa a trava de segurança da rota `/dev`
-- [ ] Porta 3000 não exposta publicamente — acesso apenas via Nginx/proxy reverso do hPanel
-- [ ] Wildcard DNS `*.saiudelivery.com.br` configurado para roteamento multi-tenant
-- [ ] `NEXT_PUBLIC_BASE_DOMAIN=saiudelivery.com.br` definido para extração dinâmica de slug

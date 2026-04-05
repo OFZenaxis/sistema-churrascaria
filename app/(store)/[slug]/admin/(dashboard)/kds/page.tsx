@@ -27,10 +27,14 @@ type KdsOrder = {
   totalAmount: number
 }
 
+// ── Tipos derivados do retorno de fetchKdsOrders (BUG-010) ───────────────────
+// Evita `any` mantendo a tipagem 100% sincronizada com o que o servidor retorna.
+type RawKdsOrder = Awaited<ReturnType<typeof fetchKdsOrders>>['orders'][number]
+type RawKdsItem = RawKdsOrder['items'][number]
+
 // ── Mappers ───────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapOrder(raw: any): KdsOrder {
+function mapOrder(raw: RawKdsOrder): KdsOrder {
   return {
     id: raw.id,
     orderCode: raw.id.slice(-6).toUpperCase(),
@@ -40,7 +44,7 @@ function mapOrder(raw: any): KdsOrder {
     createdAt: new Date(raw.createdAt),
     paymentMethod: raw.paymentMethod ?? 'PIX',
     totalAmount: raw.totalAmount ?? 0,
-    items: (raw.items ?? []).map((item: any) => ({
+    items: (raw.items ?? []).map((item: RawKdsItem) => ({
       id: item.id,
       quantity: item.quantity,
       productName: item.product?.name ?? 'Produto',
@@ -86,6 +90,9 @@ export default function KDSPage() {
   const [noPinAlert, setNoPinAlert] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  // BUG-008: detecta falhas consecutivas de polling e exibe banner de aviso
+  const [hasPollingError, setHasPollingError] = useState(false)
+  const consecutiveErrorsRef = useRef(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const prevCountRef = useRef(0)
 
@@ -107,7 +114,15 @@ export default function KDSPage() {
     // W-09: setIsLoading(false) no finally garante que o spinner nunca trava em erro de rede
     try {
       const result = await fetchKdsOrders()
-      if (!result.success) return
+      if (!result.success) {
+        // BUG-008: acumula falhas; banner aparece após 2 ciclos consecutivos
+        consecutiveErrorsRef.current += 1
+        if (consecutiveErrorsRef.current >= 2) setHasPollingError(true)
+        return
+      }
+      // Sucesso — reseta contador e remove banner
+      consecutiveErrorsRef.current = 0
+      setHasPollingError(false)
       const mapped = result.orders.map(mapOrder)
       // Toca ding se chegou pedido novo
       if (mapped.length > prevCountRef.current && prevCountRef.current >= 0) {
@@ -116,6 +131,9 @@ export default function KDSPage() {
       prevCountRef.current = mapped.length
       setOrders(mapped)
       setIsOpen(result.isOpen)
+    } catch {
+      consecutiveErrorsRef.current += 1
+      if (consecutiveErrorsRef.current >= 2) setHasPollingError(true)
     } finally {
       setIsLoading(false)
     }
@@ -272,6 +290,27 @@ export default function KDSPage() {
           >
             <AlertTriangle className="w-5 h-5 shrink-0 text-red-500" />
             {actionError}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── BUG-008: Banner de falha de polling ──────────────────── */}
+      <AnimatePresence>
+        {hasPollingError && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="shrink-0 flex items-center gap-3 bg-amber-50 border-b border-amber-200 text-amber-800 font-bold text-sm px-6 py-2.5"
+          >
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+            <span>Falha de conexão com o servidor. Tentando reconectar...</span>
+            <button
+              onClick={loadOrders}
+              className="ml-auto text-xs font-black underline underline-offset-2 hover:text-amber-900 transition-colors"
+            >
+              Tentar agora
+            </button>
           </motion.div>
         )}
       </AnimatePresence>

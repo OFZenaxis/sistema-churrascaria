@@ -38,16 +38,16 @@ model Store {
   // Feature Flags
   features Json? // Ex: { "kds": false, "gamification": false, "upsell": true }
 
-  isOpen     Boolean  @default(true)
-  kitchenPin String?  // PIN numérico para travar/destravar o KDS (por tenant)
+  isOpen     Boolean @default(true)
+  kitchenPin String? // PIN numérico para travar/destravar o KDS (por tenant)
 
   // Configurações de Entrega por GPS
-  storeAddress       String? // Endereço completo para geocodificação
-  storeLat           Float?  // Latitude da loja (preenchida via Mapbox)
-  storeLng           Float?  // Longitude da loja (preenchida via Mapbox)
-  baseDeliveryFee    Float   @default(0)  // Taxa base independente da distância
-  deliveryFeePerKm   Float   @default(0)  // Acréscimo por KM rodado
-  maxDeliveryRadius  Float   @default(10) // Raio máximo de entrega em KM
+  storeAddress      String? // Endereço completo para geocodificação
+  storeLat          Float? // Latitude da loja (preenchida via Mapbox)
+  storeLng          Float? // Longitude da loja (preenchida via Mapbox)
+  baseDeliveryFee   Float   @default(0) // Taxa base independente da distância
+  deliveryFeePerKm  Float   @default(0) // Acréscimo por KM rodado
+  maxDeliveryRadius Float   @default(10) // Raio máximo de entrega em KM
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -163,6 +163,34 @@ model Product {
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   orderItems OrderItem[]
+  options    ProductOption[] // BUG-020: upsell / acompanhamentos configuráveis
+}
+
+// ======= PRODUCT OPTIONS (BUG-020) =======
+// Opcionais configuráveis por produto — ex: ponto da carne, acompanhamentos, adicionais
+model ProductOption {
+  id        String  @id @default(uuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Ex: "Ponto da Carne", "Acompanhamentos", "Adicionais"
+  groupName String
+
+  // Ex: "Ao ponto", "Fritas", "Bacon extra"
+  label String
+
+  // Preço adicional da opção (0 = incluso sem custo)
+  priceAdd Float @default(0)
+
+  // Controla se a opção está disponível para seleção
+  isActive Boolean @default(true)
+
+  // Ordem de exibição dentro do grupo
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
 }
 
 // ======= ORDERS =======

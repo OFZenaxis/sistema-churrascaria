@@ -1,16 +1,8 @@
 import { NextResponse } from 'next/server'
 import { hash } from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
-
-// Slug: apenas letras minúsculas, números e hifens. Mínimo 3, máximo 40 chars.
-const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-
-// Slugs que conflitam com rotas da plataforma — nunca podem ser usados por lojistas
-const RESERVED_SLUGS = new Set([
-  'admin', 'api', 'login', 'logout', 'cadastro', 'pricing',
-  'about', 'contato', 'suporte', 'saiu', 'saiudelivery',
-  'app', 'dashboard', 'billing', 'webhook', 'static',
-])
+import { SLUG_REGEX, RESERVED_SLUGS } from '@/lib/validation'
+import { rateLimit } from '@/lib/ratelimit'
 
 type CreateTenantBody = {
   name: string    // Nome do restaurante
@@ -21,6 +13,18 @@ type CreateTenantBody = {
 }
 
 export async function POST(req: Request) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  const rl = rateLimit(`tenant:${ip}`, 5, 60_000)
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'Muitas tentativas. Aguarde um momento e tente novamente.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(Math.ceil((rl.retryAfterMs ?? 60_000) / 1000)) },
+      }
+    )
+  }
+
   try {
     const body: CreateTenantBody = await req.json()
     const { name, slug, email, password, phone } = body

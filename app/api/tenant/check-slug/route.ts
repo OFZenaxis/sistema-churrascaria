@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-
-const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-
-// Slugs reservados — não podem ser usados por lojistas (conflitam com rotas da plataforma)
-const RESERVED_SLUGS = new Set([
-  'admin', 'api', 'login', 'logout', 'cadastro', 'pricing',
-  'about', 'contato', 'suporte', 'saiu', 'saiudelivery',
-  'app', 'dashboard', 'billing', 'webhook', 'static',
-])
+import { SLUG_REGEX, RESERVED_SLUGS } from '@/lib/validation'
+import { rateLimit } from '@/lib/ratelimit'
 
 export async function GET(req: Request) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  const rl = rateLimit(`check-slug:${ip}`, 30, 60_000)
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: 'Muitas tentativas. Aguarde um momento.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(Math.ceil((rl.retryAfterMs ?? 60_000) / 1000)) },
+      }
+    )
+  }
+
   const { searchParams } = new URL(req.url)
   const raw = searchParams.get('slug')
 

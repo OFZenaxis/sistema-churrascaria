@@ -1,171 +1,319 @@
-# ROADMAP — O Futuro do Sistema
+# ROADMAP — O Futuro do Saiu Delivery
 
-> Este documento é baseado no estado real do código. Features listadas como "Em Progresso" foram identificadas por rotas existentes mas incompletas, stubs ou lógica parcial. "Planejado" são evoluções lógicas do produto. Consulte `PROJECT_MAP.md` para o estado atual.
+> Este documento é baseado no estado real do código. Features listadas como "Em Progresso" foram identificadas por rotas existentes, stubs ou lógica parcial. "Planejado" são evoluções lógicas do produto. Consulte `PROJECT_MAP.md` para o estado atual.
 
 **Última atualização:** 2026-04-04
 
 ---
 
-## Em Progresso (código parcialmente implementado)
+## Estado Atual (MVP Funcional)
 
-### 🔧 Distância do Motoboy — Dados Reais
+O sistema já entrega um loop completo de operação:
 
-**Situação:** `app/(store)/[slug]/motoboy/page.tsx` calcula a distância com `Math.random() * 5 + 1` km. A infraestrutura de GPS já está montada (watchPosition, updateMotoboyLocation, coordenadas no banco), mas a distância exibida ao motoboy não é real.
+```
+Lojista configura loja → Cliente faz pedido → Pagamento processado (MP)
+→ Cozinha vê no KDS → Motoboy entrega rastreando GPS → Cliente acompanha
+```
 
-**O que falta:** Usar `storeLat/Lng` da loja e coordenadas do cliente para calcular distância via Haversine ou Mapbox Directions e exibir no card da corrida.
-
----
-
-### 🔧 Redirect Sem Slug no PIX
-
-**Situação:** `PaymentPixClient.tsx` — quando o pagamento é aprovado, o redirect é feito para `/pedido/{orderId}` sem o `slug` do tenant. Em ambientes multi-tenant, isso quebra o roteamento.
-
-**O que falta:** Passar o `slug` como prop e usar `/[slug]/pedido/[id]` no redirect.
+**Módulos prontos:** Vitrine, Cardápio, Carrinho, Checkout, KDS, GPS Tracker, Dashboard Financeiro, Personalização de Tema, Entregas com Mapa.
 
 ---
 
-### 🔧 Validação de Senha Inconsistente no Onboarding
+## FASE 1 — Correções Críticas de Segurança
 
-**Situação:** `app/api/tenant/route.ts` exige mínimo 8 caracteres. `app/actions/tenant.ts` aceita 6. O formulário `/cadastro` usa 6.
+> **Prazo:** Antes de qualquer novo feature. Estas correções devem ir para produção primeiro.
 
-**O que falta:** Alinhar as três camadas para o mesmo mínimo (recomendado: 8 caracteres).
+### 1.1 — Validar assinatura do webhook Mercado Pago (BUG-002)
 
----
+**Impacto:** Segurança financeira crítica.
+**Esforço:** 0.5 dia
 
-## Débito Técnico Crítico (do BUG_TRACKER.md)
+Usar `MP_WEBHOOK_SECRET` (já no `.env.example`) para validar HMAC-SHA256 do header `x-signature` conforme documentação oficial do Mercado Pago. Implementar em `app/api/webhooks/mercadopago/route.ts`.
 
-> Todos os itens abaixo estão registrados no `docs/BUG_TRACKER.md` com detalhes de arquivo e linha.
+### 1.2 — Autenticar `getOrderLocation` (BUG-001)
 
-- **C-01:** Fallback cross-tenant no `/api/admin/orders` quando header `Host` ausente
-- **C-02:** `@ts-ignore` cobrindo contrato de tipo quebrado em `getSessionUser`
-- **C-03:** Webhook Mercado Pago descartando body inválido silenciosamente (perda de receita)
-- **C-04:** Payload de pagamento tipado como `any` na integração MP
-- **C-05:** `Math.random()` como ID de item de carrinho (risco de colisão)
+**Impacto:** Privacidade de dados de localização.
+**Esforço:** 0.5 dia
 
----
+Adicionar validação de cookie de sessão (cliente ou admin) antes de retornar dados de GPS em `app/actions/tracker.ts`.
 
-## Planejado — B2C (Experiência do Cliente)
+### 1.3 — Rate Limiting em endpoints públicos (BUG-016)
 
-### ⭐ Gamificação / Programa de Fidelidade
+**Impacto:** Proteção contra abuso e bots.
+**Esforço:** 1 dia
 
-- Pontos por pedido, níveis (Bronze/Prata/Ouro), recompensas configuráveis por lojista
-- Schema: `LoyaltyPoints`, `LoyaltyReward`, `CustomerLevel`
-- Feature flag `features.gamification` já existe no model `Store.features (Json)`
-
-### ⭐ Cupons e Descontos
-
-- CRUD de cupons pelo lojista (% ou valor fixo, validade, limite de uso)
-- Aplicação no checkout com validação server-side
-- Atalho "Cupons" já existe no Hub "Minha Conta" (link placeholder)
-- Schema: `Coupon`, `CouponRedemption`
-
-### ⭐ Múltiplos Endereços com Seletor no Checkout
-
-- Já existe estrutura de `Address` com `isDefault` e `AddressPicker`
-- Falta: UI para adicionar/editar/remover endereços no Hub "Minha Conta"
-- Atalho "Endereços" já existe no Hub (link placeholder)
-
-### ⭐ Avaliações de Pedido
-
-- Cliente avalia (estrelas + comentário) após DELIVERED
-- Dashboard admin exibe média e comentários recentes
-- Schema: `OrderReview` (orderId, rating, comment, createdAt)
-
-### ⭐ Notificações Push (PWA)
-
-- `manifest.json` já existe (referenciado no layout)
-- Falta: Service Worker, push subscription, envio de notificação quando status muda
+Implementar `@upstash/ratelimit` com Redis para:
+- `loginWithPhone`: 10 req/min por IP
+- `registerNewStore`: 5 req/hora por IP
+- `check-slug`: 30 req/min por IP
 
 ---
 
-## Planejado — B2B (Painel do Lojista)
+## FASE 2 — Qualidade e Estabilidade
 
-### ⭐ Gestão de Pedidos em Tempo Real no Admin
+> **Prazo:** Próximas 2 semanas após Fase 1.
 
-- Tela dedicada com lista de pedidos ativos (PENDING/PREPARING/READY_FOR_PICKUP)
-- Lojista avança status sem precisar abrir o KDS
-- Filtros por status, hora, valor
-- Complementa o KDS que já existe
+### 2.1 — Parar polling do CustomerTracker ao entregar (BUG-004)
 
-### ⭐ Relatório Exportável (CSV/PDF)
+Cancelar `clearInterval` quando status `=== 'DELIVERED'` ou `'CANCELED'`.
 
-- Exportar pedidos do período filtrado do Dashboard
-- Campos: ID, cliente, itens, valor, método de pagamento, status, data/hora
+### 2.2 — Indicador de falha no KDS (BUG-008)
 
-### ⭐ Gestão de Motoboys
+Adicionar banner de erro com timestamp da última sincronização bem-sucedida. Implementar retry automático com backoff exponencial.
 
-- CRUD de motoboys por tenant (nome, telefone, status ativo/inativo)
-- Atribuição manual de pedido a motoboy específico
-- Histórico de entregas por motoboy
+### 2.3 — Flag `isEstimated` no frete (BUG-009)
 
-### ⭐ Configurações de Horário de Funcionamento
+Quando Mapbox Directions falha, retornar `isEstimated: true` e exibir aviso no checkout: `"Frete estimado — valor exato calculado no processamento"`.
 
-- Definir horários por dia da semana
-- Toggle automático de `isOpen` baseado no horário
-- Mensagem customizada de "loja fechada"
+### 2.4 — Migrar imagens para `next/image` (BUG-014)
 
-### ⭐ Dashboard de Métricas — Comparativo de Períodos
+Substituir `<img>` nativo por `<Image>` do Next.js em `ProductCard.tsx` e `ProductModal.tsx`. Ganhos: lazy loading, WebP automático, prevenção de CLS.
 
-- "vs período anterior" calculado em tempo real (não apenas label fixo)
-- Substituir indicadores de crescimento hardcoded (`+12% vs semana passada`) por dados reais
-- Requer query de dois períodos em paralelo
+### 2.5 — Eliminar `any` do TypeScript (BUG-010)
 
-### ⭐ Gestão de Combos / Montagem Personalizada
+Definir tipos explícitos:
+- `type RawKdsOrder` para o KDS
+- `type MercadoPagoWebhookBody` para o webhook
+- Importar `OrderStatus` enum do Prisma em `admin.ts`
 
-- `Product.maxSides` e `OrderItem.comboSides` já existem no schema
-- Falta: UI de configuração no admin (definir quais produtos são acompanhamentos de quais pratos)
-- E UI no cardápio (seletor de acompanhamentos no `ProductModal`)
+### 2.6 — Extrair `lib/validation.ts` (BUG-012)
+
+Centralizar `SLUG_REGEX` + `RESERVED_SLUGS` + `sanitizePhone()` + `buildAddressString()`.
+
+### 2.7 — Paginação nas queries do KDS e API de pedidos (BUG-013)
+
+Adicionar `take: 100` no KDS. Implementar paginação cursor-based na rota `GET /api/admin/orders`.
 
 ---
 
-## Planejado — Plataforma SaaS (Multi-tenant)
+## FASE 3 — Expansão de Features Core
 
-### ⭐ Planos e Billing (SubscriptionTier)
+> **Prazo:** Próximo mês.
 
-- `Store.tier (BASIC/PRO/ENTERPRISE)` já existe no schema
-- `Store.features (Json)` com feature flags já existe
-- Falta: integração com gateway de assinatura (Stripe ou MP Assinaturas), bloqueio de features por tier, tela de upgrade
+### 3.1 — Notificações por WhatsApp (Alta prioridade)
 
-### ⭐ Super Admin (Gestão de Tenants)
+**Descrição:** Disparar mensagens WhatsApp automáticas nos eventos chave do pedido.
+**Casos de uso:**
+- `PREPARING`: "🍽️ Seu pedido foi aceito! Estimativa: X minutos."
+- `DISPATCHED`: "🛵 Pedido saiu para entrega! Acompanhe: [link tracker]"
+- `DELIVERED`: "✅ Pedido entregue! Obrigado por pedir na {nome da loja}."
 
-- Role `SUPER_ADMIN` existe no schema (`User.role`)
-- Falta: rota `/super-admin` com listagem de lojas, métricas agregadas da plataforma, gerenciamento de planos
+**Stack sugerida:** [Z-API](https://z-api.io) ou [Twilio WhatsApp API](https://www.twilio.com/whatsapp) + queue de eventos (ex: `BullMQ` + Redis para retries).
 
-### ⭐ Domínio Customizado Automatizado
+**Schema necessário:** Campo `mpWebhookUrl` em `Store` + `notificationPhone` em `Order`.
 
-- Campo `Store.customDomain` já existe e `tenantWhere` já suporta
-- Falta: UI no admin para o lojista informar o domínio e guia de configuração DNS
-- Falta: verificação automática de CNAME apontando para a plataforma
-
-### ⭐ Onboarding Guiado
-
-- Após cadastro, wizard que orienta o lojista: criar categoria → criar produto → configurar pagamento → personalizar loja → abrir loja
-- Progress tracker persistido no banco
+**Multi-tenant:** Cada loja configura sua própria chave Z-API no painel admin.
 
 ---
 
-## Melhorias de Infraestrutura
+### 3.2 — PWA (Progressive Web App)
 
-### ⭐ Substituir Polling por Server-Sent Events (SSE)
+**Descrição:** Transformar a vitrine do cliente em instalável (Add to Home Screen). Essencial para engajamento mobile.
 
-- KDS e rastreador de pedido usam polling (`setInterval`)
-- SSE reduziria carga no banco e melhoraria latência de atualização
-- `/api/admin/orders/route.ts` já tem comentário sugerindo SSE-ready
+**Implementação:**
+- `app/(store)/[slug]/manifest.ts` — gera manifest.json dinâmico por tenant (nome, ícone, `brandColor` como `theme_color`)
+- Service Worker via `next-pwa` para cache offline do cardápio
+- Botão "Instalar App" na vitrine com `beforeinstallprompt`
+- Push notifications (via Web Push API) para status de pedido
 
-### ⭐ Fila de Webhook (Resiliência)
+**Impacto:** Redução de dependência de app nativo; melhor retenção de clientes.
 
-- Webhook do MP processa síncrono — se o banco estiver lento, o MP pode retentar e criar duplicatas
-- Implementar idempotência: verificar se `paymentId` já foi processado antes de atualizar
-- Resolver C-03 do BUG_TRACKER como pré-requisito
+---
 
-### ⭐ Rate Limiting nas APIs Públicas
+### 3.3 — Impressão Térmica (Comanda na Cozinha)
 
-- `/api/tenant` (criação de tenant) sem rate limit atual — suscetível a spam
-- `/api/tenant/check-slug` sem rate limit — suscetível a enumeração de slugs
-- Implementar via Vercel Edge Middleware ou `upstash/ratelimit`
+**Descrição:** Imprimir comanda física automaticamente quando novo pedido chega (status `PENDING`).
 
-### ⭐ Testes Automatizados
+**Implementação:**
+- Protocolo **ESC/POS** (suportado pela maioria das impressoras térmicas)
+- Biblioteca: `escpos` ou `node-escpos`
+- Trigger: webhook interno ou polling no KDS
+- Config no painel admin: IP da impressora na rede local ou Bluetooth
 
-- Zero cobertura de testes atualmente
-- Prioridade: testes de integração nas server actions críticas (`submitOrder`, `registerNewStore`, webhook)
-- Framework sugerido: Vitest + Prisma mocks ou banco de teste dedicado
+**Impacto direto:** Elimina necessidade de olhar para a tela KDS; operação mais fluida.
+
+---
+
+### 3.4 — Gestão de Pedidos em Tempo Real (Sem Polling)
+
+**Descrição:** Substituir o polling de 8 segundos do KDS e 4 segundos do tracker por conexão em tempo real.
+
+**Opções (em ordem de preferência):**
+
+| Solução | Vantagem | Desvantagem |
+|---------|---------|------------|
+| **Supabase Realtime** | Já temos Supabase; zero infra extra | Latência ~100ms |
+| **Server-Sent Events (SSE)** | Nativo do browser; sem lib externa | Unidirecional |
+| **WebSockets (Pusher/Ably)** | Bidirecional, baixa latência | Custo adicional |
+
+**Impacto:** KDS recebe novo pedido instantaneamente; tracker atualiza GPS sem delay perceptível.
+
+---
+
+### 3.5 — Avaliações e Fidelidade
+
+**Descrição:** Sistema de avaliação pós-entrega + programa de pontos.
+
+**Módulo de Avaliação:**
+- Após status `DELIVERED`, enviar link de avaliação (WhatsApp ou SMS)
+- Formulário simples: estrelas (1-5) + comentário opcional
+- Painel admin: média de avaliações, últimos comentários
+
+**Módulo de Fidelidade:**
+- Pontos por pedido (`field: loyaltyPoints` em `Customer`)
+- Resgatar como desconto no próximo pedido
+- Configurável por lojista: X pontos por R$ gasto
+
+**Schema:**
+```prisma
+model Review {
+  id         String   @id @default(uuid())
+  orderId    String   @unique
+  storeId    String
+  rating     Int      // 1-5
+  comment    String?
+  createdAt  DateTime @default(now())
+}
+```
+
+---
+
+### 3.6 — Split de Pagamento (Plataforma + Lojista)
+
+**Descrição:** Cobrar automaticamente a taxa de plataforma no momento do pagamento, sem depender de fatura manual.
+
+**Implementação com Mercado Pago Marketplace:**
+- `marketplace_fee` no payload de criação do pagamento
+- Valor: % do pedido configurável por tier (`BASIC: 3%`, `PRO: 2%`, `ENTERPRISE: 1%`)
+- Lojista recebe o valor líquido diretamente na sua conta MP
+- Dashboard de receita da plataforma consolidado por tier
+
+**Impacto:** Monetização recorrente automatizada; elimina inadimplência.
+
+---
+
+## FASE 4 — Escala e Operações
+
+> **Prazo:** 60-90 dias.
+
+### 4.1 — Testes Automatizados
+
+**Cobertura mínima prioritária:**
+
+```
+Vitest (unitários + integração):
+├── submitOrder() — happy path + endereço inválido + loja fechada
+├── loginLojista() — credenciais corretas + erradas + tenant errado
+├── saveDeliverySettings() — geocodificação OK + falha + (0,0)
+└── Webhook MP — pagamento aprovado + storeId cross-tenant (ataque)
+
+Playwright (e2e):
+├── Fluxo de compra completo (PIX)
+└── Login lojista + toggle loja aberta/fechada
+```
+
+---
+
+### 4.2 — Monitoramento e Observabilidade
+
+| Ferramenta | Uso |
+|-----------|-----|
+| **Sentry** (`@sentry/nextjs`) | Error tracking em produção; alertas por e-mail |
+| **Pino** | Logger estruturado JSON no servidor (substitui console.error) |
+| **Uptime Robot** | Ping a cada 5min; alerta no WhatsApp se cair |
+| **Supabase Dashboard** | Queries lentas, uso de storage |
+
+**Variáveis a adicionar ao `.env`:**
+- `SENTRY_DSN` (opcional)
+- `LOG_LEVEL` (debug | info | warn | error)
+
+---
+
+### 4.3 — Onboarding Guiado para Novos Lojistas
+
+**Descrição:** Após o cadastro, lojista vê um stepper de configuração inicial no painel admin.
+
+**Etapas:**
+1. ✅ Dados básicos (nome, logo, telefone)
+2. 📍 Endereço da loja e raio de entrega
+3. 💳 Credenciais Mercado Pago
+4. 🍔 Primeiro produto cadastrado
+5. 🎨 Escolha de tema
+
+**Implementação:** Campo `onboardingStep: Int` em `Store`. Componente `OnboardingWizard.tsx` exibido no dashboard enquanto `onboardingStep < 5`.
+
+---
+
+### 4.4 — Suporte a Múltiplos Entregadores por Loja
+
+**Descrição:** Atualmente, o modelo de `Delivery` tem 1 entregador por pedido sem autenticação robusta. Escalar para frota gerenciada.
+
+**Mudanças necessárias:**
+- `Driver` como model dedicado (vinculado a `Store`)
+- Autenticação própria para motoboys (PIN ou senha simples)
+- Dashboard de entregadores: corridas disponíveis, em andamento, histórico
+- Lojista acompanha localização de todos os entregadores em um mapa único
+
+---
+
+### 4.5 — App Mobile Nativo (React Native)
+
+**Descrição:** Companion app para entregadores (tracking mais preciso via GPS nativo) e para clientes VIP (notificações push nativas).
+
+**Escopo inicial:** App de entregador apenas.
+- Background location tracking (React Native `react-native-background-geolocation`)
+- Interface simplificada: aceitar corrida → navegar → finalizar
+- Autenticação reutilizada (mesmos cookies HTTP)
+
+---
+
+## FASE 5 — B2B Enterprise
+
+> **Prazo:** 6+ meses.
+
+### 5.1 — Multi-loja por Conta (Redes)
+
+Lojista com múltiplas unidades gerencia tudo em um único painel com seletor de loja. Schema: `User` com múltiplos `storeId` via tabela `UserStoreAccess`.
+
+### 5.2 — API Pública para Integrações (Parceiros)
+
+Endpoints REST autenticados via API Key (`X-Api-Key` header) para que parceiros (iFood, sistemas POS) possam:
+- Publicar/atualizar cardápio
+- Receber pedidos em tempo real
+- Atualizar status
+
+### 5.3 — Módulo de Relatórios Avançados
+
+- Exportar pedidos do período como CSV/Excel
+- Relatório de ticket médio por dia da semana/hora
+- Comparação mês a mês
+- Produto mais vendido por período + por categoria
+
+### 5.4 — Suporte a Retirada no Local (Take Away)
+
+Novo `fulfillmentType: 'DELIVERY' | 'PICKUP'` em `Order`. Checkout sem endereço, sem cálculo de frete. KDS distingue visualmente pedidos de retirada.
+
+---
+
+## Backlog Aberto (Sem Data)
+
+| Feature | Descrição | Complexidade |
+|---------|-----------|-------------|
+| Cardápio com horários | Produto disponível apenas em certos horários | Média |
+| Variações de produto | Tamanho P/M/G com preços distintos | Alta |
+| Cupons de desconto | Código → % ou R$ de desconto no pedido | Média |
+| Agendamento de pedidos | Pedir agora para entregar às 19h | Alta |
+| Chat Lojista-Cliente | Mensagens dentro do pedido | Alta |
+| Cardápio multilíngue | Inglês/Espanhol para turistas | Baixa |
+| Modo "Só Retirada" | Desabilitar entrega mantendo retirada | Baixa |
+
+---
+
+## Decisões de Arquitetura Futuras
+
+| Decisão | Contexto | Recomendação |
+|---------|---------|-------------|
+| Polling vs Realtime | KDS e Tracker usam polling hoje | Migrar para Supabase Realtime quando volume > 100 pedidos/dia/tenant |
+| Monolito vs Microserviços | Atualmente monolito Next.js | Manter monolito até 1000 lojas ativas; extrair apenas pagamentos e notificações |
+| Vercel vs VPS | VPS atual com PM2 | Avaliar Vercel para zero-config de edge, CDN e auto-scaling |
+| Banco por tenant vs compartilhado | Compartilhado com `storeId` hoje | Row-level security (RLS) no Supabase como camada adicional de isolamento |

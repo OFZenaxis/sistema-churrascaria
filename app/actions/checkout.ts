@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/prisma'
 import { OrderStatus } from '@prisma/client'
 import { getSessionUser } from './auth'
+import { logger } from '@/lib/logger'
 import { geocodeAddress, getDrivingDistance, calcDeliveryFee } from '@/lib/mapbox'
 
 type PaymentMethod = 'PIX' | 'CARD_ONLINE' | 'CARD_MACHINE' | 'CASH'
@@ -17,7 +18,7 @@ type CartItemInput = {
 export async function estimateDeliveryFee(
   addressId: string,
   storeId: string
-): Promise<{ fee: number; distanceKm: number | null; outOfRange: boolean; error?: string }> {
+): Promise<{ fee: number; distanceKm: number | null; outOfRange: boolean; isEstimated?: boolean; error?: string }> {
   try {
     const [address, store] = await Promise.all([
       prisma.address.findFirst({
@@ -32,9 +33,9 @@ export async function estimateDeliveryFee(
 
     if (!address || !store) return { fee: 0, distanceKm: null, outOfRange: false }
 
-    // Se a loja não tiver coordenadas configuradas, cobra apenas a taxa base
+    // Se a loja não tiver coordenadas configuradas, cobra apenas a taxa base (estimada)
     if (!store.storeLat || !store.storeLng) {
-      return { fee: store.baseDeliveryFee, distanceKm: null, outOfRange: false }
+      return { fee: store.baseDeliveryFee, distanceKm: null, outOfRange: false, isEstimated: true }
     }
 
     let lat = address.lat
@@ -51,14 +52,16 @@ export async function estimateDeliveryFee(
       }
     }
 
+    // BUG-009: sem coords do cliente = fallback estimado
     if (!lat || !lng) {
-      return { fee: store.baseDeliveryFee, distanceKm: null, outOfRange: false }
+      return { fee: store.baseDeliveryFee, distanceKm: null, outOfRange: false, isEstimated: true }
     }
 
     const distanceKm = await getDrivingDistance(store.storeLat, store.storeLng, lat, lng)
 
+    // BUG-009: Mapbox Directions falhou = fallback estimado para taxa base
     if (distanceKm === null) {
-      return { fee: store.baseDeliveryFee, distanceKm: null, outOfRange: false }
+      return { fee: store.baseDeliveryFee, distanceKm: null, outOfRange: false, isEstimated: true }
     }
 
     if (distanceKm > store.maxDeliveryRadius) {
@@ -68,7 +71,7 @@ export async function estimateDeliveryFee(
     const fee = calcDeliveryFee(distanceKm, store.baseDeliveryFee, store.deliveryFeePerKm)
     return { fee, distanceKm, outOfRange: false }
   } catch {
-    return { fee: 0, distanceKm: null, outOfRange: false }
+    return { fee: 0, distanceKm: null, outOfRange: false, isEstimated: true }
   }
 }
 
@@ -98,7 +101,7 @@ export async function submitOrder(
 
     // ── Resolve address ──
     const targetAddressId = addressId
-      || user.addresses.find((a: any) => a.isDefault)?.id
+      || user.addresses.find(a => a.isDefault)?.id
       || user.addresses[0]?.id
 
     if (!targetAddressId) {
@@ -249,11 +252,11 @@ export async function submitOrder(
     })
 
     return { success: true, orderId: order.id }
-  } catch (error: any) {
-    console.error("Erro no checkout", error)
-    const message = error?.code === 'P2002'
-      ? 'Pedido duplicado detectado.'
-      : 'Erro na conexão com o banco. Tente novamente.'
-    return { success: false, error: message }
+  } catch (error: unknown) {
+    logger.error('checkout', 'submitOrder: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
+    const isPrismaConflict =
+      typeof error === 'object' && error !== null &&
+      'code' in error && (error as { code: string }).code === 'P2002'
+    return { success: false, error: isPrismaConflict ? 'Pedido duplicado detectado.' : 'Erro na conexão com o banco. Tente novamente.' }
   }
 }

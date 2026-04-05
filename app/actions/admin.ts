@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/prisma'
+import { OrderStatus } from '@prisma/client'
+import { logger } from '@/lib/logger'
 import { getLojistaSession, requireAdminSession } from '@/app/actions/adminAuth'
 
 export async function toggleProductActive(productId: string, currentStatus: boolean, storeId: string) {
@@ -15,7 +17,7 @@ export async function toggleProductActive(productId: string, currentStatus: bool
     })
     return { success: true, isActive: updated.isActive }
   } catch (error) {
-    console.error("[admin] Erro toggleProductActive:", error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'Erro toggleProductActive: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro na conexão com o banco ao alterar produto.' }
   }
 }
@@ -60,7 +62,7 @@ export async function saveProduct(data: {
     }
     return { success: true }
   } catch (error) {
-    console.error("[admin] Erro no saveProduct:", error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'Erro no saveProduct: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao salvar produto no banco.' }
   }
 }
@@ -76,7 +78,7 @@ export async function toggleStoreStatus(currentStatus: boolean, storeId: string)
     })
     return { success: true, isOpen: updatedStore.isOpen }
   } catch (error) {
-    console.error("[admin] Erro toggleStoreStatus:", error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'Erro toggleStoreStatus: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao alterar status da loja.' }
   }
 }
@@ -133,7 +135,7 @@ export async function saveStoreSettings(
 
     return { success: true }
   } catch (error) {
-    console.error('[admin] Erro saveStoreSettings:', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'Erro saveStoreSettings: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao salvar configurações.' }
   }
 }
@@ -151,7 +153,7 @@ export async function createCategory(name: string, storeId: string) {
     })
     return { success: true, category }
   } catch (error) {
-    console.error('[admin] Erro createCategory:', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'Erro createCategory: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao criar categoria.' }
   }
 }
@@ -174,7 +176,7 @@ export async function deleteCategory(id: string, storeId: string) {
     await prisma.category.deleteMany({ where: { id, storeId } })
     return { success: true }
   } catch (error) {
-    console.error('[admin] Erro deleteCategory:', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'Erro deleteCategory: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao deletar categoria.' }
   }
 }
@@ -213,6 +215,10 @@ export async function saveDeliverySettings(
   if (data.storeAddress.trim()) {
     const { geocodeAddress } = await import('@/lib/mapbox')
     coords = await geocodeAddress(data.storeAddress.trim())
+    // BUG-007: rejeita (0,0) — resposta silenciosa de falha do Mapbox aponta para o oceano
+    if (coords && Math.abs(coords.lat) < 0.001 && Math.abs(coords.lng) < 0.001) {
+      coords = null
+    }
     if (!coords) {
       geocodeWarning = 'Endereço não encontrado no Mapbox. As configurações foram salvas, mas o raio de entrega não funcionará até que o endereço seja corrigido.'
     }
@@ -234,7 +240,7 @@ export async function saveDeliverySettings(
 
     return { success: true, ...(coords && { coords }), ...(geocodeWarning && { geocodeWarning }) }
   } catch (error) {
-    console.error('[admin] Erro saveDeliverySettings:', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'Erro saveDeliverySettings: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao salvar configurações de entrega.' }
   }
 }
@@ -280,7 +286,7 @@ export async function saveDeliveryZone(
     }
     return { success: true }
   } catch (error) {
-    console.error('[admin] Erro saveDeliveryZone:', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'Erro saveDeliveryZone: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao salvar zona de entrega.' }
   }
 }
@@ -294,7 +300,7 @@ export async function deleteDeliveryZone(id: string, storeId: string) {
     await prisma.deliveryZone.deleteMany({ where: { id, storeId } })
     return { success: true }
   } catch (error) {
-    console.error('[admin] Erro deleteDeliveryZone:', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'Erro deleteDeliveryZone: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao excluir zona de entrega.' }
   }
 }
@@ -309,7 +315,7 @@ export async function toggleDeliveryZoneActive(id: string, storeId: string, curr
     })
     return { success: true }
   } catch (error) {
-    console.error('[admin] Erro toggleDeliveryZoneActive:', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'Erro toggleDeliveryZoneActive: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao alterar zona.' }
   }
 }
@@ -354,6 +360,7 @@ export async function fetchKdsOrders() {
           }
         },
         orderBy: { createdAt: 'asc' },
+        take: 100, // BUG-013: previne timeout em lojas de alto volume
       }),
       prisma.store.findUnique({
         where: { id: session.storeId },
@@ -363,12 +370,17 @@ export async function fetchKdsOrders() {
 
     return { success: true as const, orders, isOpen: store?.isOpen ?? true }
   } catch (error) {
-    console.error('[fetchKdsOrders]', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'fetchKdsOrders: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false as const, error: 'Erro ao buscar pedidos.', orders: [], isOpen: false }
   }
 }
 
 const VALID_KDS_STATUSES = ['PENDING', 'PREPARING', 'READY_FOR_PICKUP', 'DISPATCHED', 'DELIVERED', 'CANCELED'] as const
+
+/** Type guard: garante que a string é um OrderStatus válido antes de persistir. */
+function isValidOrderStatus(s: string): s is OrderStatus {
+  return (VALID_KDS_STATUSES as readonly string[]).includes(s)
+}
 
 /**
  * Atualiza o status de um pedido.
@@ -378,18 +390,18 @@ export async function updateOrderStatus(orderId: string, newStatus: string) {
   const session = await getLojistaSession()
   if (!session) return { success: false, error: 'Não autorizado.' }
 
-  if (!VALID_KDS_STATUSES.includes(newStatus as any)) {
+  if (!isValidOrderStatus(newStatus)) {
     return { success: false, error: 'Status inválido.' }
   }
 
   try {
     await prisma.order.update({
       where: { id: orderId, storeId: session.storeId }, // 🔒 tenant isolation
-      data: { status: newStatus as any },
+      data: { status: newStatus },
     })
     return { success: true }
   } catch (error) {
-    console.error('[updateOrderStatus]', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'updateOrderStatus: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao atualizar status.' }
   }
 }
@@ -416,7 +428,7 @@ export async function toggleKdsStoreStatus() {
     })
     return { success: true, isOpen: updated.isOpen }
   } catch (error) {
-    console.error('[toggleKdsStoreStatus]', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'toggleKdsStoreStatus: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao alterar status da loja.', isOpen: false }
   }
 }
@@ -452,7 +464,7 @@ export async function updateStoreTheme(data: {
     revalidatePath(`/${store.slug}`)
     return { success: true }
   } catch (error) {
-    console.error('[updateStoreTheme]', error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('admin', 'updateStoreTheme: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao salvar aparência.' }
   }
 }

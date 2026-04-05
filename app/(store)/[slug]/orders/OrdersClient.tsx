@@ -31,6 +31,9 @@ type OrdersClientProps = {
   orders: OrderData[]
   slug: string
   storeId: string
+  /** BUG-019: coordenadas do tenant para centrar o mapa do tracker */
+  storeLat: number | null
+  storeLng: number | null
   storeTheme: StoreTheme
   user: { name: string | null; phone: string }
 }
@@ -48,7 +51,7 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELED:  'Cancelado',
 }
 
-export default function OrdersClient({ orders: initialOrders, slug, storeId, storeTheme, user }: OrdersClientProps) {
+export default function OrdersClient({ orders: initialOrders, slug, storeId, storeLat, storeLng, storeTheme, user }: OrdersClientProps) {
   const { brandColor, phoneBg, phoneCard, phoneText, phoneSubText } = storeTheme
   const router = useRouter()
   const [orders, setOrders] = useState(initialOrders)
@@ -114,6 +117,9 @@ export default function OrdersClient({ orders: initialOrders, slug, storeId, sto
               <div className="p-2">
                 <CustomerTracker
                   orderId={activeTrackerId}
+                  storeId={storeId}
+                  storeLat={storeLat}
+                  storeLng={storeLng}
                   onDelivered={() => setTimeout(() => { setActiveTrackerId(null); router.refresh() }, 4000)}
                 />
               </div>

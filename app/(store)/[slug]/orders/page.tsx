@@ -12,7 +12,7 @@ export default async function OrdersPage({ params }: { params: Promise<{ slug: s
 
   const store = await prisma.store.findFirst({
     where: isDomain ? { customDomain: slug } : { slug },
-    select: { id: true, brandColor: true, themeId: true }
+    select: { id: true, brandColor: true, themeId: true, storeLat: true, storeLng: true }
   })
 
   if (!store) notFound()
@@ -62,6 +62,8 @@ export default async function OrdersPage({ params }: { params: Promise<{ slug: s
           orders={activeOrders as any}
           slug={slug}
           storeId={store.id}
+          storeLat={store.storeLat}
+          storeLng={store.storeLng}
           storeTheme={storeTheme}
           user={{ name: user.name, phone: user.phone }}
         />
