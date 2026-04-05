@@ -288,7 +288,7 @@ function BentoGrid() {
 function SetupSteps() {
   const steps = [
     { num: '1', label: 'Crie sua conta', desc: 'Cadastro em 2 minutos, sem cartão de crédito para começar.' },
-    { num: '2', label: 'Cadastre o cardápio', desc: 'Adicione produtos, preços e fotos pelo painel admin.' },
+    { num: '2', label: 'Importação do Cardápio', desc: 'Importação fácil dos seus produtos. Você não precisa cadastrar dezenas de itens do zero.' },
     { num: '3', label: 'Receba no Pix', desc: 'Compartilhe seu link e o dinheiro cai direto na sua conta.' },
   ]
 

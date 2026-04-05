@@ -53,6 +53,26 @@ function isValidPhone(v: string) {
   return v.replace(/\D/g, '').length >= 10
 }
 
+function maskPhone(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 11)
+  if (digits.length <= 2) return digits.length ? `(${digits}` : ''
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`
+}
+
+async function savePartialLead(data: Pick<FormData, 'ownerName' | 'email' | 'phone'>) {
+  try {
+    await fetch('/api/leads/partial', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: data.ownerName, email: data.email, phone: data.phone }),
+    })
+  } catch {
+    // silently fail — não travar o fluxo do usuário
+  }
+}
+
 // ─── Stepper indicator ────────────────────────────────────────────────────────
 const STEPS = [
   { label: 'Você',   icon: User  },
@@ -184,6 +204,10 @@ export default function CadastroPage() {
   // ── Navigation ────────────────────────────────────────────────────────
   function next() {
     setError('')
+    if (step === 1) {
+      // fire-and-forget: não bloqueia navegação
+      savePartialLead({ ownerName: formData.ownerName, email: formData.email, phone: formData.phone })
+    }
     setStep(s => (s < 3 ? ((s + 1) as 1 | 2 | 3) : s))
   }
   function back() {
@@ -344,9 +368,13 @@ export default function CadastroPage() {
                   <input
                     id="phone"
                     type="tel"
+                    inputMode="numeric"
                     required
                     value={formData.phone}
-                    onChange={set('phone')}
+                    onChange={e => {
+                      setError('')
+                      setFormData(prev => ({ ...prev, phone: maskPhone(e.target.value) }))
+                    }}
                     className={inputCls}
                     placeholder="(11) 90000-0000"
                   />
