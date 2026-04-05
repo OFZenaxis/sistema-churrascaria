@@ -42,6 +42,12 @@ function Header() {
             <a href="#pricing" className="hover:text-slate-900 transition-colors">Preço</a>
           </nav>
           <Link
+            href="/login"
+            className="text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+          >
+            Entrar
+          </Link>
+          <Link
             href="/cadastro"
             className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all text-white font-bold text-sm px-5 py-2.5 rounded-xl shadow-md shadow-rose-600/30"
           >
@@ -586,6 +592,10 @@ function FAQ() {
     { q: 'Vocês cobram alguma taxa sobre a venda?', a: 'Zero. O valor integral dos pedidos pagos via Pix cai diretamente na sua conta. Você paga apenas a nossa assinatura mensal fixa.' },
     { q: 'É difícil de configurar?', a: 'Setup em 5 minutos. Nosso painel é super intuitivo. Basta cadastrar seus produtos no nosso cardápio fácil e você já terá seu link próprio para vender.' },
     { q: 'O cliente precisa baixar aplicativo?', a: 'Não, ele pede direto pelo navegador acessando o seu link próprio (ex: sua-loja.saiudelivery.com.br). Sem barreiras corporativas, garantindo conversão máxima para o seu negócio.' },
+    { q: 'Vocês fazem a entrega dos pedidos?', a: 'Não. O Saiu Delivery é o sistema que recebe e organiza seus pedidos. A entrega é feita pelo seu próprio motoboy ou parceiro logístico — você mantém controle total.' },
+    { q: 'Aceita pagamento com cartão de crédito?', a: 'Sim. Através da integração com o Mercado Pago, seus clientes podem pagar via Pix, cartão de crédito e débito. O Pix cai na hora; cartão segue o prazo do Mercado Pago.' },
+    { q: 'O sistema imprime o pedido na impressora térmica?', a: 'Sim. Além do KDS na tela, o sistema pode enviar o pedido para impressora térmica não-fiscal. Nada trava na sexta à noite.' },
+    { q: 'Tenho site próprio mas o iFood ainda me traz clientes. Posso usar os dois?', a: 'Essa é a jogada inteligente. Use o iFood como vitrine para captar novos clientes. Coloque um panfleto no pedido com 10% de desconto para o próximo pedido pelo seu link. Você conquista o cliente e nunca mais paga comissão por ele.' },
   ]
 
   return (
