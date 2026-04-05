@@ -26,9 +26,10 @@ export default function DevPortalPage() {
   // 🔒 TRAVA DE SEGURANÇA — Esta rota NUNCA pode ser acessada em produção
   if (process.env.NODE_ENV !== 'development') notFound()
 
-  const bugContent     = readDoc('BUG_TRACKER.md')
-  const roadmapContent = readDoc('ROADMAP.md')
-  const mapContent     = readDoc('PROJECT_MAP.md')
+  const bugContent       = readDoc('BUG_TRACKER.md')
+  const roadmapContent   = readDoc('ROADMAP.md')
+  const mapContent       = readDoc('PROJECT_MAP.md')
+  const marketingContent = readDoc('MARKETING_ROADMAP.md')
 
   return (
     <div className="h-screen flex flex-col bg-slate-950 overflow-hidden font-mono">
@@ -100,7 +101,7 @@ export default function DevPortalPage() {
           { label: 'Prisma', status: 'online', color: 'text-emerald-400' },
           { label: 'Supabase', status: 'online', color: 'text-emerald-400' },
           { label: 'MercadoPago', status: 'sandbox', color: 'text-amber-400' },
-          { label: 'Next.js', status: '15.2.1', color: 'text-cyan-400' },
+          { label: 'Next.js', status: '16.2.1', color: 'text-cyan-400' },
           { label: 'TypeScript', status: 'strict', color: 'text-blue-400' },
           { label: 'Mapbox', status: 'configured', color: 'text-violet-400' },
         ].map((item, i) => (
@@ -130,6 +131,7 @@ export default function DevPortalPage() {
           bugContent={bugContent}
           roadmapContent={roadmapContent}
           mapContent={mapContent}
+          marketingContent={marketingContent}
         />
       </div>
 

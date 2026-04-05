@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import WhatsAppButton from '@/components/WhatsAppButton'
 
 export const metadata: Metadata = {
   title: 'Saiu Delivery · Pare de Pagar Taxas. O Lucro do Seu Delivery é 100% Seu.',
@@ -12,7 +13,10 @@ export const metadata: Metadata = {
 }
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-stone-50 text-slate-900 antialiased">
+  return (
+    <div className="min-h-screen bg-stone-50 text-slate-900 antialiased">
       {children}
+      <WhatsAppButton />
     </div>
+  )
 }

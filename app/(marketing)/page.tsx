@@ -9,15 +9,15 @@ import {
   TrendingUp,
   ShieldCheck,
   QrCode,
-  Quote,
   Zap,
-  Star,
   ChevronDown,
   X,
   Minus,
   MessageSquare,
   Unlock,
   HandCoins,
+  Users,
+  RefreshCcw,
 } from 'lucide-react'
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -227,6 +227,9 @@ function BentoGrid() {
               <p className="text-slate-500 text-sm font-medium leading-relaxed">
                 Pedido confirmado pelo cliente? A cozinha já viu. Sem papéis, sem grito, sem pedido perdido. Tudo em tempo real.
               </p>
+              <p className="mt-3 text-[11px] text-orange-600 font-semibold bg-orange-50 border border-orange-100 rounded-xl px-3 py-2 leading-relaxed">
+                <strong>KDS (Kitchen Display System):</strong> Uma tela inteligente para a sua cozinha organizar os pedidos sem precisar de papel ou impressora.
+              </p>
               <div className="mt-5 flex items-center gap-2">
                 {['PENDENTE', 'PREPARO', 'PRONTO'].map((status, i) => (
                   <div key={status} className={`flex-1 text-center py-2 rounded-xl text-[10px] md:text-xs font-black truncate px-1 ${
@@ -277,53 +280,122 @@ function BentoGrid() {
   )
 }
 
-function SocialProof() {
+function SetupSteps() {
+  const steps = [
+    { num: '1', label: 'Crie sua conta', desc: 'Cadastro em 2 minutos, sem cartão de crédito para começar.' },
+    { num: '2', label: 'Cadastre o cardápio', desc: 'Adicione produtos, preços e fotos pelo painel admin.' },
+    { num: '3', label: 'Receba no Pix', desc: 'Compartilhe seu link e o dinheiro cai direto na sua conta.' },
+  ]
+
+  return (
+    <section className="py-14 md:py-20 px-5 bg-stone-50/80 border-y border-slate-200/60">
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-10">
+          <p className="text-rose-600 font-bold text-xs md:text-sm uppercase tracking-widest mb-3">Simples assim</p>
+          <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tight">
+            Setup em 5 minutos. Sério.
+          </h2>
+        </div>
+
+        <div className="flex flex-col md:flex-row items-stretch gap-4 md:gap-0">
+          {steps.map((step, i) => (
+            <div key={step.num} className="flex flex-col md:flex-row items-center flex-1">
+              {/* Step card */}
+              <div className="flex-1 bg-white border border-slate-200/80 rounded-2xl p-6 text-center md:text-left shadow-sm w-full">
+                <div className="w-10 h-10 rounded-xl bg-rose-600 text-white font-black text-lg flex items-center justify-center mb-4 mx-auto md:mx-0 shadow-md shadow-rose-600/25">
+                  {step.num}
+                </div>
+                <p className="font-black text-slate-900 text-base mb-1">{step.label}</p>
+                <p className="text-slate-500 text-sm font-medium leading-relaxed">{step.desc}</p>
+              </div>
+              {/* Arrow connector */}
+              {i < steps.length - 1 && (
+                <div className="flex items-center justify-center py-2 md:py-0 md:px-3 shrink-0">
+                  <ArrowRight className="w-5 h-5 text-slate-300 rotate-90 md:rotate-0" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="text-center mt-10">
+          <Link
+            href="/cadastro"
+            className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] transition-all text-white font-black text-base px-8 py-4 rounded-2xl shadow-lg shadow-rose-600/30 group"
+          >
+            Criar Minha Loja
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </Link>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function InlineCTA() {
+  return (
+    <div className="py-10 md:py-14 px-5 flex justify-center bg-white border-y border-slate-100">
+      <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 max-w-xl w-full">
+        <p className="text-slate-600 font-semibold text-sm md:text-base text-center sm:text-left text-balance flex-1">
+          Pronto para parar de pagar taxas? Comece agora com <strong className="text-rose-600">garantia de 7 dias.</strong>
+        </p>
+        <Link
+          href="/cadastro"
+          className="shrink-0 inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] transition-all text-white font-black text-sm px-6 py-3.5 rounded-xl shadow-md shadow-rose-600/25 group whitespace-nowrap"
+        >
+          Criar Minha Loja <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+function FoundersProgram() {
   return (
     <section className="py-14 md:py-24 px-5 bg-white">
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-10 md:mb-14">
-          <p className="text-rose-600 font-bold text-xs md:text-sm uppercase tracking-widest mb-3">Prova Social</p>
+          <p className="text-rose-600 font-bold text-xs md:text-sm uppercase tracking-widest mb-3">Programa Exclusivo</p>
           <h2 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tight text-balance">
-            Resultados reais, do primeiro mês.
+            Seja um dos 50 Primeiros Fundadores.
           </h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
-          {/* Testimonial — destaque */}
-          <div className="md:col-span-2 bg-slate-50 border border-slate-200/80 rounded-3xl p-6 md:p-8 relative overflow-hidden">
-            <Quote className="absolute top-6 right-6 md:right-8 w-12 h-12 md:w-16 md:h-16 text-slate-200" strokeWidth={1} />
+          {/* Card principal — Proposta dos Fundadores */}
+          <div className="md:col-span-2 bg-gradient-to-br from-rose-50 to-orange-50 border border-rose-200/60 rounded-3xl p-6 md:p-8 relative overflow-hidden">
+            <div className="absolute -right-8 -top-8 w-40 h-40 bg-rose-200/30 rounded-full blur-2xl" />
             <div className="relative z-10">
-              <div className="flex gap-1 mb-5">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} className="w-3.5 h-3.5 md:w-4 md:h-4 fill-amber-400 text-amber-400" />
-                ))}
+              <div className="inline-flex items-center gap-2 bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full mb-5 shadow-md shadow-rose-600/20">
+                <Users className="w-3 h-3" /> 50 vagas · Acesso antecipado
               </div>
-              <blockquote className="text-slate-700 text-lg md:text-xl font-semibold leading-relaxed mb-6 text-balance">
-                "Economizamos{' '}
-                <span className="text-emerald-600 font-black">R$ 4.800 em taxas</span>{' '}
-                no primeiro mês de Saiu Delivery. Nossos clientes amaram a facilidade de pedir pelo nosso próprio link."
-              </blockquote>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center font-black text-rose-600 shrink-0">
-                  M
-                </div>
-                <div>
-                  <p className="font-black text-slate-900 text-xs md:text-sm">Marcos Oliveira</p>
-                  <p className="text-slate-400 text-[10px] md:text-xs font-medium">Dono da Pizzaria Bella Napoli · Campinas, SP</p>
-                </div>
-              </div>
+              <p className="text-slate-700 text-lg md:text-xl font-semibold leading-relaxed mb-6 text-balance">
+                Estamos liberando as primeiras <strong className="text-rose-600">50 licenças da versão 1.0</strong> a preço de custo. Garanta{' '}
+                <strong className="text-emerald-600">R$ 97/mês vitalícios</strong> (sem reajustes) e ganhe uma linha direta de suporte VIP no WhatsApp direto com os criadores da plataforma.{' '}
+                <span className="text-slate-500 font-medium">Sem robôs, apenas resolução de problemas reais.</span>
+              </p>
+              <Link
+                href="/cadastro"
+                className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] transition-all text-white font-black text-sm px-6 py-3 rounded-xl shadow-lg shadow-rose-600/25 group"
+              >
+                Garantir Minha Vaga de Fundador
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </Link>
             </div>
           </div>
 
-          {/* Stats card */}
+          {/* Stats cards */}
           <div className="flex flex-col gap-4">
             <div className="flex-1 bg-emerald-600 rounded-3xl p-6 text-white flex flex-col justify-between shadow-lg shadow-emerald-600/20">
-              <p className="text-emerald-200 text-xs md:text-sm font-bold uppercase tracking-widest">Economia média</p>
+              <p className="text-emerald-200 text-xs md:text-sm font-bold uppercase tracking-widest">Economia média*</p>
               <div className="mt-4 md:mt-0">
                 <p className="text-4xl md:text-5xl font-black tracking-tight">R$ 4.200</p>
                 <p className="text-emerald-200 text-xs md:text-sm font-medium mt-1">por mês vs. apps</p>
               </div>
+              <p className="text-emerald-300/70 text-[10px] mt-3 leading-relaxed">
+                *Baseado na economia de taxas em um restaurante que fatura R$ 20.000/mês nos aplicativos.
+              </p>
             </div>
             <div className="flex-1 bg-slate-900 rounded-3xl p-6 text-white flex flex-col justify-between">
               <p className="text-slate-400 text-xs md:text-sm font-bold uppercase tracking-widest">Setup</p>
@@ -451,14 +523,20 @@ function GuaranteeSection() {
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
           
-          <div className="bg-slate-800/50 border border-slate-700/50 rounded-3xl p-8 hover:bg-slate-800 transition-colors">
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-rose-500/20 rounded-2xl flex items-center justify-center mb-5 md:mb-6">
-              <Unlock className="w-5 h-5 md:w-6 md:h-6 text-rose-400" />
+          <div className="bg-slate-800/50 border border-emerald-500/20 rounded-3xl p-8 hover:bg-slate-800 transition-colors relative overflow-hidden">
+            <div className="absolute -top-4 -right-4 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl" />
+            <div className="relative z-10">
+              <div className="w-10 h-10 md:w-12 md:h-12 bg-emerald-500/20 rounded-2xl flex items-center justify-center mb-5 md:mb-6">
+                <RefreshCcw className="w-5 h-5 md:w-6 md:h-6 text-emerald-400" />
+              </div>
+              <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full mb-3">
+                Garantia Incondicional
+              </div>
+              <h3 className="text-lg md:text-xl font-black text-white mb-3">7 Dias ou Seu Dinheiro de Volta</h3>
+              <p className="text-slate-400 font-medium leading-relaxed text-sm md:text-base">
+                Assine agora e teste o sistema. Se não for o melhor painel que você já usou, devolvemos <strong className="text-white">100% do seu dinheiro com 1 clique.</strong> Sem perguntas, sem burocracia.
+              </p>
             </div>
-            <h3 className="text-lg md:text-xl font-black text-white mb-3">O Fim do Sequestro Contratual</h3>
-            <p className="text-slate-400 font-medium leading-relaxed text-sm md:text-base">
-              Teste e saia quando quiser. Cancelamento livre em 1 clique direto no painel, sem ter que implorar para um robô num chat infinito.
-            </p>
           </div>
 
           <div className="bg-slate-800/50 border border-slate-700/50 rounded-3xl p-8 hover:bg-slate-800 transition-colors">
@@ -558,7 +636,7 @@ function PricingTeaser() {
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Link>
               <p className="text-center text-slate-400 text-[10px] md:text-xs font-medium mt-3">
-                Cancele quando quiser. Sem multa.
+                Garantia incondicional de 7 dias · Cancele quando quiser · Sem multa.
               </p>
             </div>
 
@@ -634,8 +712,8 @@ function Footer() {
         </p>
 
         <div className="flex items-center flex-wrap justify-center gap-4 md:gap-5 text-xs md:text-sm font-medium">
-          <a href="#" className="hover:text-white transition-colors">Privacidade</a>
-          <a href="#" className="hover:text-white transition-colors">Termos</a>
+          <Link href="/privacidade" className="hover:text-white transition-colors">Privacidade</Link>
+          <Link href="/termos" className="hover:text-white transition-colors">Termos</Link>
           <a href="#" className="hover:text-white transition-colors">Contato</a>
         </div>
       </div>
@@ -652,11 +730,14 @@ export default function MarketingPage() {
       <main>
         <Hero />
         <BentoGrid />
-        <SocialProof />
+        <InlineCTA />
+        <SetupSteps />
+        <FoundersProgram />
         <ComparisonTable />
         <GuaranteeSection />
         <FAQ />
         <PricingTeaser />
+        <InlineCTA />
         <CTAFooter />
       </main>
       <Footer />

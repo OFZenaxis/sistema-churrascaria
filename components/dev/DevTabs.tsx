@@ -3,9 +3,9 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Bug, Map, Rocket, CheckCircle, Circle, AlertTriangle } from 'lucide-react'
+import { Bug, Map, Rocket, CheckCircle, Circle, AlertTriangle, Megaphone } from 'lucide-react'
 
-type Tab = 'bugs' | 'roadmap' | 'map'
+type Tab = 'bugs' | 'roadmap' | 'marketing' | 'map'
 
 interface TabDef {
   id: Tab
@@ -35,6 +35,15 @@ const TABS: TabDef[] = [
     accent: 'from-violet-500/20 to-transparent',
     borderActive: 'border-violet-500',
     textActive: 'text-violet-400',
+  },
+  {
+    id: 'marketing',
+    label: 'Marketing & Vendas',
+    shortLabel: 'Vendas',
+    icon: <Megaphone className="w-4 h-4" />,
+    accent: 'from-pink-500/20 to-transparent',
+    borderActive: 'border-pink-500',
+    textActive: 'text-pink-400',
   },
   {
     id: 'map',
@@ -174,12 +183,32 @@ const markdownComponents: React.ComponentProps<typeof ReactMarkdown>['components
   ),
 }
 
-// ── Stat badge extracted from BUG_TRACKER content ─────────────────────────────
+// ── Stat badges extraídos do BUG_TRACKER.md ───────────────────────────────────
+// O BUG_TRACKER usa "- **Status:** RESOLVIDO/ABERTO/EM PROGRESSO", não task lists GFM.
 
 function extractBugStats(content: string) {
-  const total = (content.match(/^- \[/gm) ?? []).length
-  const done  = (content.match(/^- \[x\]/gm) ?? []).length
-  return { total, done, open: total - done }
+  const bugs       = (content.match(/^### BUG-\d+/gm) ?? []).length
+  const resolved   = (content.match(/- \*\*Status:\*\* RESOLVIDO/g) ?? []).length
+  const inProgress = (content.match(/- \*\*Status:\*\* EM PROGRESSO/g) ?? []).length
+  const open       = (content.match(/- \*\*Status:\*\* ABERTO/g) ?? []).length
+  // Itens legados (C-xx, W-xx, O-xx) da tabela de histórico — todos já resolvidos
+  const legacy     = (content.match(/^\|\s*(C|W|O)-\d+/gm) ?? []).length
+  return { total: bugs + legacy, resolved: resolved + legacy, open, inProgress }
+}
+
+// Conta bugs por nível de severidade (parseia seções ## do markdown)
+function extractSeverityStats(content: string) {
+  const counts = { critico: 0, alto: 0, medio: 0, baixo: 0 }
+  // Divide pelo marcador de seção H2
+  const sections = content.split(/\n## /)
+  for (const sec of sections) {
+    const bugs = (sec.match(/^### BUG-\d+/gm) ?? []).length
+    if (sec.startsWith('🔴'))      counts.critico += bugs
+    else if (sec.startsWith('🟠')) counts.alto    += bugs
+    else if (sec.startsWith('🟡')) counts.medio   += bugs
+    else if (sec.startsWith('🟢')) counts.baixo   += bugs
+  }
+  return counts
 }
 
 // ── Main tabs component ────────────────────────────────────────────────────────
@@ -188,18 +217,24 @@ export default function DevTabs({
   bugContent,
   roadmapContent,
   mapContent,
+  marketingContent,
 }: {
   bugContent: string
   roadmapContent: string
   mapContent: string
+  marketingContent: string
 }) {
   const [active, setActive] = useState<Tab>('bugs')
-  const stats = extractBugStats(bugContent)
+  const stats   = extractBugStats(bugContent)
+  const sev     = extractSeverityStats(bugContent)
+  const pct     = stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) : 0
+  const allDone = stats.open === 0 && stats.inProgress === 0
 
   const contentMap: Record<Tab, string> = {
-    bugs:    bugContent,
-    roadmap: roadmapContent,
-    map:     mapContent,
+    bugs:      bugContent,
+    roadmap:   roadmapContent,
+    marketing: marketingContent,
+    map:       mapContent,
   }
 
   const activeTab = TABS.find(t => t.id === active)!
@@ -208,26 +243,80 @@ export default function DevTabs({
     <div className="flex flex-col h-full min-h-0">
 
       {/* ── Stats bar ─────────────────────────────────────────────── */}
-      <div className="shrink-0 flex items-center gap-6 px-6 py-3 bg-slate-900/60 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-black text-emerald-400 uppercase tracking-widest">
-            {stats.done}/{stats.total} bugs resolvidos
-          </span>
-        </div>
-        <div className="h-4 w-px bg-slate-700" />
-        <div className="flex items-center gap-1.5">
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-            stats.open === 0
-              ? 'bg-emerald-500/20 text-emerald-400'
-              : 'bg-red-500/20 text-red-400'
-          }`}>
-            {stats.open === 0 ? '✓ Zero dívida técnica' : `${stats.open} itens em aberto`}
-          </span>
-        </div>
+      <div className="shrink-0 bg-slate-900/60 border-b border-slate-800">
 
-        <div className="ml-auto text-xs text-slate-600 font-mono">
-          {new Date().toLocaleString('pt-BR')}
+        {/* Deploy-ready banner — só aparece quando tudo está resolvido */}
+        {allDone && (
+          <div className="flex items-center justify-center gap-3 px-6 py-2 bg-emerald-500/10 border-b border-emerald-500/20">
+            <span className="text-emerald-400 text-sm">🚀</span>
+            <span className="text-xs font-black text-emerald-400 uppercase tracking-widest">
+              Deploy Ready — Bug Tracker zerado com {stats.total} bugs resolvidos
+            </span>
+            <span className="text-emerald-400 text-sm">🏆</span>
+          </div>
+        )}
+
+        {/* Linha de métricas */}
+        <div className="flex items-center gap-5 px-6 py-2.5 flex-wrap">
+
+          {/* Progresso geral */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <span className="text-xs font-black text-emerald-400 uppercase tracking-widest whitespace-nowrap">
+              {stats.resolved}/{stats.total} resolvidos
+            </span>
+            {/* Barra de progresso */}
+            <div className="w-24 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <span className="text-xs font-black text-emerald-500">{pct}%</span>
+          </div>
+
+          <div className="h-4 w-px bg-slate-700 shrink-0" />
+
+          {/* Badge status */}
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-full whitespace-nowrap ${
+            allDone
+              ? 'bg-emerald-500/20 text-emerald-400'
+              : stats.open > 0
+              ? 'bg-red-500/20 text-red-400'
+              : 'bg-amber-500/20 text-amber-400'
+          }`}>
+            {allDone
+              ? '✓ Zero dívida técnica'
+              : stats.inProgress > 0
+              ? `${stats.inProgress} em progresso`
+              : `${stats.open} em aberto`}
+          </span>
+
+          <div className="h-4 w-px bg-slate-700 shrink-0" />
+
+          {/* Breakdown por severidade */}
+          <div className="flex items-center gap-3 text-[10px] font-mono">
+            <span title="Críticos" className="flex items-center gap-1">
+              <span>🔴</span>
+              <span className="text-slate-400">{sev.critico}</span>
+            </span>
+            <span title="Altos" className="flex items-center gap-1">
+              <span>🟠</span>
+              <span className="text-slate-400">{sev.alto}</span>
+            </span>
+            <span title="Médios" className="flex items-center gap-1">
+              <span>🟡</span>
+              <span className="text-slate-400">{sev.medio}</span>
+            </span>
+            <span title="Baixos" className="flex items-center gap-1">
+              <span>🟢</span>
+              <span className="text-slate-400">{sev.baixo}</span>
+            </span>
+          </div>
+
+          <div className="ml-auto text-[10px] text-slate-600 font-mono whitespace-nowrap">
+            {new Date().toLocaleString('pt-BR')}
+          </div>
         </div>
       </div>
 
