@@ -14,7 +14,6 @@ import {
   X,
   Minus,
   MessageSquare,
-  Unlock,
   HandCoins,
   Users,
   RefreshCcw,
@@ -220,15 +219,15 @@ function BentoGrid() {
               <div className="w-10 h-10 md:w-12 md:h-12 bg-orange-100 rounded-2xl flex items-center justify-center mb-5">
                 <MonitorCheck className="w-5 h-5 md:w-6 md:h-6 text-orange-600" />
               </div>
-              <h3 className="text-lg md:text-xl font-black text-slate-900 tracking-tight mb-2">
+              <h3 className="text-lg md:text-xl font-black text-slate-900 tracking-tight mb-1">
                 Cozinha Sincronizada
                 <span className="ml-2 text-[10px] md:text-xs font-bold bg-orange-100 text-orange-600 px-2 py-0.5 rounded-lg align-middle">KDS</span>
               </h3>
+              <p className="text-[11px] text-slate-400 font-medium mb-3 leading-relaxed">
+                KDS (Kitchen Display System): uma tela inteligente que mostra os pedidos na cozinha em tempo real, sem papel e sem grito.
+              </p>
               <p className="text-slate-500 text-sm font-medium leading-relaxed">
                 Pedido confirmado pelo cliente? A cozinha já viu. Sem papéis, sem grito, sem pedido perdido. Tudo em tempo real.
-              </p>
-              <p className="mt-3 text-[11px] text-orange-600 font-semibold bg-orange-50 border border-orange-100 rounded-xl px-3 py-2 leading-relaxed">
-                <strong>KDS (Kitchen Display System):</strong> Uma tela inteligente para a sua cozinha organizar os pedidos sem precisar de papel ou impressora.
               </p>
               <div className="mt-5 flex items-center gap-2">
                 {['PENDENTE', 'PREPARO', 'PRONTO'].map((status, i) => (
@@ -335,16 +334,17 @@ function SetupSteps() {
 function InlineCTA() {
   return (
     <div className="py-10 md:py-14 px-5 flex justify-center bg-white border-y border-slate-100">
-      <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 max-w-xl w-full">
-        <p className="text-slate-600 font-semibold text-sm md:text-base text-center sm:text-left text-balance flex-1">
-          Pronto para parar de pagar taxas? Comece agora com <strong className="text-rose-600">garantia de 7 dias.</strong>
-        </p>
+      <div className="flex flex-col items-center gap-4 text-center">
         <Link
           href="/cadastro"
-          className="shrink-0 inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] transition-all text-white font-black text-sm px-6 py-3.5 rounded-xl shadow-md shadow-rose-600/25 group whitespace-nowrap"
+          className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] transition-all text-white font-black text-base px-8 py-4 rounded-2xl shadow-lg shadow-rose-600/30 group"
         >
-          Criar Minha Loja <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          Criar Minha Loja Agora
+          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </Link>
+        <p className="text-slate-400 text-xs md:text-sm font-medium">
+          Setup em 5 minutos · R$ 97/mês · Cancele quando quiser
+        </p>
       </div>
     </div>
   )
@@ -407,6 +407,21 @@ function FoundersProgram() {
           </div>
 
         </div>
+
+        {/* Métricas de prova social */}
+        <div className="mt-10 pt-8 border-t border-slate-200/60 grid grid-cols-3 gap-4 md:gap-8 max-w-lg mx-auto">
+          {[
+            { value: 'R$ 0', label: 'em taxas por pedido', color: 'text-emerald-600' },
+            { value: '5 min', label: 'tempo médio de setup', color: 'text-rose-600' },
+            { value: '100%', label: 'do lucro fica com você', color: 'text-slate-900' },
+          ].map(({ value, label, color }) => (
+            <div key={label} className="text-center">
+              <p className={`text-2xl md:text-3xl font-black ${color} tracking-tight`}>{value}</p>
+              <p className="text-slate-400 text-[10px] md:text-xs font-medium mt-1 md:mt-1.5 leading-tight">{label}</p>
+            </div>
+          ))}
+        </div>
+
       </div>
     </section>
   )
@@ -714,7 +729,7 @@ function Footer() {
         <div className="flex items-center flex-wrap justify-center gap-4 md:gap-5 text-xs md:text-sm font-medium">
           <Link href="/privacidade" className="hover:text-white transition-colors">Privacidade</Link>
           <Link href="/termos" className="hover:text-white transition-colors">Termos</Link>
-          <a href="#" className="hover:text-white transition-colors">Contato</a>
+          <a href="https://wa.me/SEU_NUMERO" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Contato</a>
         </div>
       </div>
     </footer>
@@ -731,11 +746,12 @@ export default function MarketingPage() {
         <Hero />
         <BentoGrid />
         <InlineCTA />
-        <SetupSteps />
         <FoundersProgram />
         <ComparisonTable />
         <GuaranteeSection />
+        <InlineCTA />
         <FAQ />
+        <SetupSteps />
         <PricingTeaser />
         <InlineCTA />
         <CTAFooter />
