@@ -15,7 +15,7 @@ export default async function MotoboyPage({ params }: { params: Promise<{ slug: 
   // 🔒 Resolve o tenant correto a partir do slug/domínio
   const store = await prisma.store.findFirst({
     where: isDomain ? { customDomain: slug } : { slug },
-    select: { id: true, slug: true }
+    select: { id: true, slug: true, lat: true, lng: true }
   })
 
   if (!store) {
@@ -39,13 +39,10 @@ export default async function MotoboyPage({ params }: { params: Promise<{ slug: 
     const addressData = order.deliveryAddress ? order.deliveryAddress.split(' - ') : ['Sem Endereço', 'Desconhecido']
     const address = addressData[0]
     const neighborhood = addressData[addressData.length - 1] || order.deliveryZone?.name || 'Local'
-    const distance = (Math.random() * 5 + 1).toFixed(1) + ' km'
-
     return {
       id: order.id,
       address,
       neighborhood,
-      distance,
       payout: order.deliveryZone?.fee || 5.0,
       status: order.status === OrderStatus.READY_FOR_PICKUP ? 'AVAILABLE' : 'DISPATCHED',
       timeElapsed: calculateElapsed(order.createdAt),
@@ -78,6 +75,8 @@ export default async function MotoboyPage({ params }: { params: Promise<{ slug: 
       myRides={rides.filter(r => r.status === 'DISPATCHED') as any}
       completedRidesTotal={completedRides.length}
       totalEarned={totalEarned}
+      storeLat={store.lat ?? null}
+      storeLng={store.lng ?? null}
     />
   )
 }

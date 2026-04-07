@@ -41,7 +41,7 @@ export default async function PagamentoPage({
 
   const pubKey = paymentConfig?.mpPublicKey ?? ''
 
-  const customerEmail = `${order.customerPhone.replace(/\D/g, '')}@cliente.saiudelivery.com.br`
+  const customerEmail = `${order.customerPhone.replace(/\D/g, '')}@saiu.delivery`
 
   return (
     <main className="min-h-screen bg-black text-zinc-100 p-6 flex flex-col items-center">
@@ -62,7 +62,7 @@ export default async function PagamentoPage({
               </p>
             </div>
           ) : method === 'PIX' ? (
-            <PaymentPixClient orderId={order.id} amount={order.totalAmount} />
+            <PaymentPixClient orderId={order.id} amount={order.totalAmount} customerEmail={customerEmail} />
           ) : (
             <PaymentClient
               orderId={order.id}

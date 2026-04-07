@@ -1,9 +1,10 @@
 "use server"
 
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { compare } from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { signPayload, verifyPayload } from '@/lib/session'
+import { rateLimit } from '@/lib/ratelimit'
 
 // ─── Lojista Auth (per-tenant) ────────────────────────────────────────────────
 
@@ -14,6 +15,15 @@ import { signPayload, verifyPayload } from '@/lib/session'
 export async function loginLojista(email: string, password: string, slug: string) {
   if (!email?.trim() || !password || !slug?.trim()) {
     return { success: false, error: 'Campos obrigatórios ausentes.' }
+  }
+
+  // Rate limiting — 5 tentativas por IP a cada 15 minutos
+  const headersList = await headers()
+  const ip = headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
+  const rl = rateLimit(`admin-login:${ip}`, 5, 15 * 60 * 1000)
+  if (!rl.ok) {
+    const minutes = Math.ceil((rl.retryAfterMs ?? 0) / 60_000)
+    return { success: false, error: `Muitas tentativas. Aguarde ${minutes} minuto(s) antes de tentar novamente.` }
   }
 
   // 1. Resolve o tenant pelo slug

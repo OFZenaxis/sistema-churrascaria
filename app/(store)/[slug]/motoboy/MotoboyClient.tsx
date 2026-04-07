@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useTransition, useEffect, useMemo } from 'react'
+import React, { useState, useTransition, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MapPin, Navigation, CheckCircle2, DollarSign, Clock, LayoutDashboard, Loader2, Map as MapIcon } from 'lucide-react'
 import Link from 'next/link'
@@ -13,7 +13,6 @@ type Ride = {
   id: string
   address: string
   neighborhood: string
-  distance: string
   payout: number
   status: 'READY_FOR_PICKUP' | 'DISPATCHED' | 'DELIVERED'
   timeElapsed: string
@@ -23,13 +22,33 @@ type Ride = {
   customerName?: string | null
 }
 
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) *
+    Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function rideDistance(ride: Ride, storeLat: number | null, storeLng: number | null): string {
+  if (storeLat && storeLng && ride.customerLat && ride.customerLng) {
+    return haversineKm(storeLat, storeLng, ride.customerLat, ride.customerLng).toFixed(1) + ' km'
+  }
+  return 'Calculando...'
+}
+
 export default function MotoboyClient({
   storeId,
   slug,
   availableRides,
   myRides,
   completedRidesTotal,
-  totalEarned
+  totalEarned,
+  storeLat,
+  storeLng,
 }: {
   storeId: string
   slug: string
@@ -37,6 +56,8 @@ export default function MotoboyClient({
   myRides: Ride[]
   completedRidesTotal: number
   totalEarned: number
+  storeLat: number | null
+  storeLng: number | null
 }) {
   const [isPending, startTransition] = useTransition()
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -47,33 +68,41 @@ export default function MotoboyClient({
 
   const activeRide = myRides.find(r => r.status === 'DISPATCHED')
 
-  // GPS Watch
-  useEffect(() => {
-    let watchId: number
+  // Refs para controlar o GPS sem reiniciar o efeito a cada mudança de activeRide
+  const watchIdRef = useRef<number | null>(null)
+  const activeRideRef = useRef(activeRide)
 
-    if ('geolocation' in navigator) {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords
-          setMotoboyCoords({ lat: latitude, lng: longitude })
-          
-          if (activeRide) {
-            updateMotoboyLocation(activeRide.id, latitude, longitude, storeId).catch(console.error)
-          }
-        },
-        (error) => {
-          console.error("Erro GPS:", error.message)
-        },
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
-      )
-    }
+  // Mantém activeRideRef atualizado sem ser uma dependência do GPS useEffect
+  useEffect(() => {
+    activeRideRef.current = activeRide
+  }, [activeRide])
+
+  // GPS Watch — inicia uma vez ao montar, para no unmount ou após finishRide
+  useEffect(() => {
+    if (!('geolocation' in navigator)) return
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords
+        setMotoboyCoords({ lat: latitude, lng: longitude })
+        if (activeRideRef.current) {
+          updateMotoboyLocation(activeRideRef.current.id, latitude, longitude, storeId).catch(console.error)
+        }
+      },
+      (error) => {
+        console.error("Erro GPS:", error.message)
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+    )
 
     return () => {
-      if (watchId !== undefined && 'geolocation' in navigator) {
-        navigator.geolocation.clearWatch(watchId)
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
       }
     }
-  }, [activeRide])
+  // storeId é estável — o efeito roda efetivamente uma vez ao montar
+  }, [storeId])
 
   // Fetch Mapbox Directions when moto and customer coords exist
   useEffect(() => {
@@ -115,6 +144,11 @@ export default function MotoboyClient({
       await finishRide(id, storeId, slug)
       setProcessingId(null)
       setRouteGeoJSON(null)
+      // Para o GPS — entrega concluída, não há mais motivo para rastrear
+      if (watchIdRef.current !== null && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(watchIdRef.current)
+        watchIdRef.current = null
+      }
     })
   }
 
@@ -228,7 +262,7 @@ export default function MotoboyClient({
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-black text-2xl text-emerald-400">R$ {activeRide.payout.toFixed(2)}</p>
-                    <p className="text-xs text-zinc-500 font-bold mt-1 bg-zinc-800/50 px-2 py-1 rounded inline-block">{activeRide.distance}</p>
+                    <p className="text-xs text-zinc-500 font-bold mt-1 bg-zinc-800/50 px-2 py-1 rounded inline-block">{rideDistance(activeRide, storeLat, storeLng)}</p>
                   </div>
                 </div>
 
@@ -319,7 +353,7 @@ export default function MotoboyClient({
                           </div>
                           <div className="text-right shrink-0">
                             <p className="font-black text-2xl text-orange-400 pb-1">R$ {ride.payout.toFixed(2)}</p>
-                            <p className="text-xs text-zinc-500 font-bold bg-zinc-900 border border-zinc-800 px-2 py-1 rounded">{ride.distance}</p>
+                            <p className="text-xs text-zinc-500 font-bold bg-zinc-900 border border-zinc-800 px-2 py-1 rounded">{rideDistance(ride, storeLat, storeLng)}</p>
                           </div>
                         </div>
 

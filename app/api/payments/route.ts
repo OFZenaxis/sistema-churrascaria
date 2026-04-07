@@ -93,7 +93,7 @@ export async function POST(req: Request) {
       payment_method_id,
       description: `Pedido #${order.id.split('-')[0].toUpperCase()} - ${order.store.name}`,
       payer: {
-        email: payer?.email || 'cliente@saiudelivery.com.br',
+        email: payer?.email || `${(order.customerPhone ?? '').replace(/\D/g, '')}@saiu.delivery`,
         identification: payer?.identification || undefined,
       },
       external_reference: orderId,
