@@ -1,4 +1,7 @@
 import Link from 'next/link'
+import Image from 'next/image'
+import EconomyCalculator from './components/EconomyCalculator'
+import FAQAccordion from './components/FAQAccordion'
 import {
   Flame,
   ArrowRight,
@@ -14,6 +17,8 @@ import {
   X,
   Minus,
   MessageSquare,
+  Mail,
+  Phone,
   HandCoins,
   Users,
   RefreshCcw,
@@ -26,14 +31,12 @@ function Header() {
     <header className="fixed top-0 inset-x-0 z-50 backdrop-blur-xl bg-white/75 border-b border-slate-200/80 shadow-sm">
       <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
         {/* Logo */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-rose-600 rounded-xl flex items-center justify-center shadow-sm">
-            <Flame className="w-4.5 h-4.5 text-white fill-white" strokeWidth={1.5} />
-          </div>
-          <span className="text-slate-900 font-black text-lg tracking-tight">
-            Saiu<span className="text-rose-600">Delivery</span>
+        <Link href="/" className="flex items-center gap-2.5 focus:outline-none">
+          <Image src="/logo-icon.png" alt="Saiu Delivery" width={32} height={32} priority />
+          <span className="font-black text-lg text-slate-900">
+            Saiu<span className="text-green-600">Delivery</span>
           </span>
-        </div>
+        </Link>
 
         {/* Nav + CTA */}
         <div className="flex items-center gap-6">
@@ -43,15 +46,17 @@ function Header() {
           </nav>
           <Link
             href="/login"
-            className="text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+            className="hidden md:block text-sm font-semibold text-slate-700 hover:text-slate-900 transition-colors"
           >
             Entrar
           </Link>
           <Link
             href="/cadastro"
-            className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all text-white font-bold text-sm px-5 py-2.5 rounded-xl shadow-md shadow-rose-600/30"
+            className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all text-white font-bold text-sm px-4 md:px-5 py-2.5 rounded-xl shadow-md shadow-rose-600/30"
           >
-            Criar Minha Loja <ArrowRight className="w-4 h-4" />
+            <span className="md:hidden">Criar Loja</span>
+            <span className="hidden md:inline">Criar Minha Loja</span>
+            <ArrowRight className="w-4 h-4 hidden md:block" />
           </Link>
         </div>
       </div>
@@ -288,7 +293,7 @@ function BentoGrid() {
 function SetupSteps() {
   const steps = [
     { num: '1', label: 'Crie sua conta', desc: 'Cadastro em 2 minutos, sem cartão de crédito para começar.' },
-    { num: '2', label: 'Importação do Cardápio', desc: 'Importação fácil dos seus produtos. Você não precisa cadastrar dezenas de itens do zero.' },
+    { num: '2', label: 'Crie seu cardápio', desc: 'Crie seu cardápio facilmente no painel. Você não precisa cadastrar dezenas de itens do zero.' },
     { num: '3', label: 'Receba no Pix', desc: 'Compartilhe seu link e o dinheiro cai direto na sua conta.' },
   ]
 
@@ -374,7 +379,7 @@ function FoundersProgram() {
             <div className="absolute -right-8 -top-8 w-40 h-40 bg-rose-200/30 rounded-full blur-2xl" />
             <div className="relative z-10">
               <div className="inline-flex items-center gap-2 bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full mb-5 shadow-md shadow-rose-600/20">
-                <Users className="w-3 h-3" /> 50 vagas · Acesso antecipado
+                <Users className="w-3 h-3" /> Últimas vagas do lote de fundadores
               </div>
               <p className="text-slate-700 text-lg md:text-xl font-semibold leading-relaxed mb-6 text-balance">
                 Estamos liberando as primeiras <strong className="text-rose-600">50 licenças da versão 1.0</strong> a preço de custo. Garanta{' '}
@@ -586,42 +591,79 @@ function GuaranteeSection() {
   )
 }
 
+function FounderSection() {
+  return (
+    <section className="py-14 md:py-24 px-5 bg-white border-t border-slate-100">
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-10 md:mb-14">
+          <p className="text-rose-600 font-bold text-xs md:text-sm uppercase tracking-widest mb-3">Quem faz o Saiu Delivery</p>
+          <h2 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tight text-balance">
+            Construído por quem viveu a operação.
+          </h2>
+        </div>
+
+        <div className="flex flex-col md:flex-row items-center md:items-start gap-10 md:gap-14">
+          {/* Foto */}
+          <div className="shrink-0 flex flex-col items-center gap-3">
+            <div className="w-32 h-32 md:w-44 md:h-44 rounded-3xl overflow-hidden border-4 border-slate-100 shadow-xl">
+              <Image
+                src="/founder.jpg"
+                alt="Fellipe Coutinho — Fundador do Saiu Delivery"
+                width={176}
+                height={176}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="text-center">
+              <p className="font-black text-slate-900 text-base">Fellipe Coutinho</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                Fundador &amp; Desenvolvedor
+              </p>
+            </div>
+          </div>
+
+          {/* Copy */}
+          <div className="flex-1">
+            <blockquote className="text-slate-600 text-lg md:text-xl font-medium leading-relaxed text-balance border-l-4 border-emerald-500 pl-6">
+              &ldquo;Cresci no balcão do restaurante da família. Minha mãe teve confeitaria por
+              anos — eu sei o que é fechar o mês e ver que uma fatia boa do que você faturou
+              foi para o aplicativo. Quando precisei de um sistema de delivery próprio para o
+              nosso restaurante, procurei no mercado e não encontrei nada que fizesse sentido
+              para quem está na operação de verdade. Como também sou desenvolvedor, construí.
+              O Saiu Delivery nasceu para o nosso negócio e agora está disponível para o
+              seu.&rdquo;
+            </blockquote>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function FAQ() {
   const faqs = [
     { q: 'Preciso ter CNPJ para assinar?', a: 'Não, aceitamos CPF. Você pode começar a vender hoje mesmo usando seu CPF e conta bancária pessoal para receber os pagamentos via Pix.' },
     { q: 'Vocês cobram alguma taxa sobre a venda?', a: 'Zero. O valor integral dos pedidos pagos via Pix cai diretamente na sua conta. Você paga apenas a nossa assinatura mensal fixa.' },
     { q: 'É difícil de configurar?', a: 'Setup em 5 minutos. Nosso painel é super intuitivo. Basta cadastrar seus produtos no nosso cardápio fácil e você já terá seu link próprio para vender.' },
-    { q: 'O cliente precisa baixar aplicativo?', a: 'Não, ele pede direto pelo navegador acessando o seu link próprio (ex: sua-loja.saiudelivery.com.br). Sem barreiras corporativas, garantindo conversão máxima para o seu negócio.' },
-    { q: 'Vocês fazem a entrega dos pedidos?', a: 'Não. O Saiu Delivery é o sistema que recebe e organiza seus pedidos. A entrega é feita pelo seu próprio motoboy ou parceiro logístico — você mantém controle total.' },
-    { q: 'Aceita pagamento com cartão de crédito?', a: 'Sim. Através da integração com o Mercado Pago, seus clientes podem pagar via Pix, cartão de crédito e débito. O Pix cai na hora; cartão segue o prazo do Mercado Pago.' },
-    { q: 'O sistema imprime o pedido na impressora térmica?', a: 'Sim. Além do KDS na tela, o sistema pode enviar o pedido para impressora térmica não-fiscal. Nada trava na sexta à noite.' },
-    { q: 'Tenho site próprio mas o iFood ainda me traz clientes. Posso usar os dois?', a: 'Essa é a jogada inteligente. Use o iFood como vitrine para captar novos clientes. Coloque um panfleto no pedido com 10% de desconto para o próximo pedido pelo seu link. Você conquista o cliente e nunca mais paga comissão por ele.' },
+    { q: 'O cliente precisa baixar aplicativo?', a: 'Não, ele pede direto pelo navegador acessando o seu link próprio. Sem barreiras, garantindo conversão máxima para o seu negócio.' },
+    { q: 'Se eu sair do iFood, não vou ter mais clientes?', a: 'Não precisa sair. Use o iFood como vitrine para novos clientes. Quando eles pedirem por lá, mande junto com a entrega um panfleto com 10% de desconto para o próximo pedido pelo seu link próprio. Você transfere o cliente para a sua base e nunca mais paga taxa por ele.' },
+    { q: 'Vocês têm entregadores próprios?', a: 'Não. O Saiu Delivery é o sistema de pedidos e gestão — você mantém sua própria equipe de entrega ou usa motoboys avulsos como sempre fez.' },
+    { q: 'Imprime na impressora térmica?', a: 'Sim. Compatível com impressoras térmicas não-fiscais padrão. Os pedidos são enviados automaticamente para impressão assim que confirmados.' },
+    { q: 'Aceita cartão de crédito ou só Pix?', a: 'O pagamento online dos seus clientes é feito via Pix, que cai direto na sua conta na hora. Pagamentos presenciais (cartão, dinheiro) você registra normalmente como sempre fez.' },
+    { q: 'O que acontece com meus dados se eu cancelar?', a: 'Você exporta tudo antes de cancelar — cardápio, histórico de pedidos, base de clientes. Cancelamento com 1 clique no painel, sem multa, sem precisar falar com ninguém.' },
+    { q: 'Funciona para qualquer tipo de restaurante?', a: 'Sim. Pizzarias, lanchonetes, hamburguerias, marmitarias, confeitarias e qualquer estabelecimento que faça delivery. Se você vende comida, o Saiu Delivery funciona para você.' },
   ]
 
   return (
     <section className="py-14 md:py-24 px-5 bg-stone-50/50">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <div className="text-center mb-10 md:mb-12">
           <p className="text-rose-600 font-bold text-xs md:text-sm uppercase tracking-widest mb-3">Dúvidas Frequentes</p>
           <h2 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tight text-balance">
             Tudo limpo e transparente.
           </h2>
         </div>
-        <div className="space-y-3 md:space-y-4">
-          {faqs.map((faq, i) => (
-            <details key={i} className="group bg-white border border-slate-200/80 rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden [&_summary::-webkit-details-marker]:hidden">
-              <summary className="flex items-center justify-between cursor-pointer p-5 md:p-6 font-bold text-slate-900 text-sm md:text-lg hover:text-rose-600 transition-colors gap-4">
-                {faq.q}
-                <div className="shrink-0 w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center group-open:bg-rose-50 transition-colors">
-                  <ChevronDown className="w-5 h-5 text-slate-400 group-open:text-rose-500 group-open:-rotate-180 transition-transform" />
-                </div>
-              </summary>
-              <div className="px-5 md:px-6 pb-5 md:pb-6 text-slate-500 font-medium leading-relaxed text-sm md:text-base">
-                {faq.a}
-              </div>
-            </details>
-          ))}
-        </div>
+        <FAQAccordion faqs={faqs} />
       </div>
     </section>
   )
@@ -721,26 +763,60 @@ function CTAFooter() {
 
 function Footer() {
   return (
-    <footer className="bg-slate-900 text-slate-400 py-10 md:py-12 px-5 pb-24 md:pb-12">
-      <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 md:gap-0">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 bg-rose-600 rounded-lg flex items-center justify-center">
-            <Flame className="w-4 h-4 text-white fill-white" strokeWidth={1.5} />
+    <footer className="bg-slate-900 text-slate-400 border-t border-slate-700 py-12 px-5 pb-24 md:pb-12">
+      <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-start gap-10 md:gap-8">
+
+        {/* Coluna esquerda — Logo + identidade legal */}
+        <div className="flex flex-col items-center md:items-start gap-3 flex-1 text-center md:text-left">
+          <Link href="/">
+            <Image
+              src="/logo-full.png"
+              alt="Saiu Delivery"
+              width={200}
+              height={56}
+              className="h-12 md:h-14 w-auto"
+            />
+          </Link>
+          <p className="text-sm text-slate-400 font-medium">
+            Delivery próprio. Lucro 100% seu.
+          </p>
+          <div className="text-xs text-slate-500 leading-relaxed">
+            <p>62.190.600 Fellipe Costa Neiva Coutinho</p>
+            <p>CNPJ: 62.190.600/0001-17 · Luziânia, GO</p>
           </div>
-          <span className="text-white font-black text-base tracking-tight">
-            Saiu<span className="text-rose-500">Delivery</span>
-          </span>
         </div>
 
-        <p className="text-xs md:text-sm text-center text-slate-500">
-          © {new Date().getFullYear()} Saiu Delivery · SaaS Multi-Tenant Independente
-        </p>
-
-        <div className="flex items-center flex-wrap justify-center gap-4 md:gap-5 text-xs md:text-sm font-medium">
-          <Link href="/privacidade" className="hover:text-white transition-colors">Privacidade</Link>
-          <Link href="/termos" className="hover:text-white transition-colors">Termos</Link>
-          <a href="https://wa.me/SEU_NUMERO" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Contato</a>
+        {/* Coluna centro — Links legais + copyright */}
+        <div className="flex flex-col items-center gap-3 shrink-0 text-center">
+          <div className="flex items-center gap-5 text-sm font-medium">
+            <Link href="/privacidade" className="hover:text-white transition-colors">Privacidade</Link>
+            <Link href="/termos" className="hover:text-white transition-colors">Termos</Link>
+          </div>
+          <p className="text-xs text-slate-500">
+            © {new Date().getFullYear()} Saiu Delivery
+          </p>
         </div>
+
+        {/* Coluna direita — Contato */}
+        <div className="flex flex-col items-center md:items-end gap-3 shrink-0 text-center md:text-right">
+          <a
+            href="https://wa.me/5561995783461"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-sm font-medium hover:text-white transition-colors"
+          >
+            <Phone className="w-4 h-4 shrink-0" />
+            Fale pelo WhatsApp
+          </a>
+          <a
+            href="mailto:contato@saiudelivery.com.br"
+            className="flex items-center gap-2 text-sm font-medium hover:text-white transition-colors"
+          >
+            <Mail className="w-4 h-4 shrink-0" />
+            contato@saiudelivery.com.br
+          </a>
+        </div>
+
       </div>
     </footer>
   )
@@ -748,19 +824,62 @@ function Footer() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const faqSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    { '@type': 'Question', name: 'Preciso ter CNPJ para assinar?', acceptedAnswer: { '@type': 'Answer', text: 'Não, aceitamos CPF. Você pode começar a vender hoje mesmo usando seu CPF e conta bancária pessoal para receber os pagamentos via Pix.' } },
+    { '@type': 'Question', name: 'Vocês cobram alguma taxa sobre a venda?', acceptedAnswer: { '@type': 'Answer', text: 'Zero. O valor integral dos pedidos pagos via Pix cai diretamente na sua conta. Você paga apenas a nossa assinatura mensal fixa.' } },
+    { '@type': 'Question', name: 'É difícil de configurar?', acceptedAnswer: { '@type': 'Answer', text: 'Setup em 5 minutos. Nosso painel é super intuitivo. Basta cadastrar seus produtos no nosso cardápio fácil e você já terá seu link próprio para vender.' } },
+    { '@type': 'Question', name: 'O cliente precisa baixar aplicativo?', acceptedAnswer: { '@type': 'Answer', text: 'Não, ele pede direto pelo navegador acessando o seu link próprio. Sem barreiras, garantindo conversão máxima para o seu negócio.' } },
+    { '@type': 'Question', name: 'Se eu sair do iFood, não vou ter mais clientes?', acceptedAnswer: { '@type': 'Answer', text: 'Não precisa sair. Use o iFood como vitrine para novos clientes. Quando eles pedirem por lá, mande junto com a entrega um panfleto com 10% de desconto para o próximo pedido pelo seu link próprio. Você transfere o cliente para a sua base e nunca mais paga taxa por ele.' } },
+    { '@type': 'Question', name: 'Vocês têm entregadores próprios?', acceptedAnswer: { '@type': 'Answer', text: 'Não. O Saiu Delivery é o sistema de pedidos e gestão — você mantém sua própria equipe de entrega ou usa motoboys avulsos como sempre fez.' } },
+    { '@type': 'Question', name: 'Imprime na impressora térmica?', acceptedAnswer: { '@type': 'Answer', text: 'Sim. Compatível com impressoras térmicas não-fiscais padrão. Os pedidos são enviados automaticamente para impressão assim que confirmados.' } },
+    { '@type': 'Question', name: 'Aceita cartão de crédito ou só Pix?', acceptedAnswer: { '@type': 'Answer', text: 'O pagamento online dos seus clientes é feito via Pix, que cai direto na sua conta na hora. Pagamentos presenciais (cartão, dinheiro) você registra normalmente como sempre fez.' } },
+    { '@type': 'Question', name: 'O que acontece com meus dados se eu cancelar?', acceptedAnswer: { '@type': 'Answer', text: 'Você exporta tudo antes de cancelar — cardápio, histórico de pedidos, base de clientes. Cancelamento com 1 clique no painel, sem multa, sem precisar falar com ninguém.' } },
+    { '@type': 'Question', name: 'Funciona para qualquer tipo de restaurante?', acceptedAnswer: { '@type': 'Answer', text: 'Sim. Pizzarias, lanchonetes, hamburguerias, marmitarias, confeitarias e qualquer estabelecimento que faça delivery. Se você vende comida, o Saiu Delivery funciona para você.' } },
+  ],
+}
+
+const appSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Saiu Delivery',
+  description: 'Delivery próprio com Pix direto na sua conta. R$ 97/mês fixos, zero comissão por pedido.',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web',
+  url: 'https://saiudelivery.com.br',
+  offers: {
+    '@type': 'Offer',
+    price: '97',
+    priceCurrency: 'BRL',
+    priceSpecification: {
+      '@type': 'UnitPriceSpecification',
+      price: '97',
+      priceCurrency: 'BRL',
+      unitText: 'MONTH',
+    },
+  },
+  logo: 'https://saiudelivery.com.br/logo-full.png',
+}
+
 export default function MarketingPage() {
   return (
     <div className="bg-stone-50 min-h-screen text-slate-900 antialiased overflow-x-hidden">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(appSchema) }} />
       <Header />
       <main>
         <Hero />
         <BentoGrid />
+        <EconomyCalculator />
         <InlineCTA />
         <FoundersProgram />
         <ComparisonTable />
         <GuaranteeSection />
         <InlineCTA />
         <FAQ />
+        <FounderSection />
         <SetupSteps />
         <PricingTeaser />
         <InlineCTA />
