@@ -3,7 +3,7 @@
 export default function WhatsAppButton() {
   return (
     <a
-      href="https://wa.me/SEU_NUMERO"
+      href="https://wa.me/5561995783461"
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Falar com o suporte pelo WhatsApp"
