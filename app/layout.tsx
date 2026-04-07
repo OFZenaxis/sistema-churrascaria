@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: 'Plataforma para dezenas de deliverys.',
   manifest: '/manifest.json',
   icons: {
-    icon: '/favicon.ico',
+    icon: '/logo-icon.png',
     apple: '/logo-icon.png',
   },
   appleWebApp: {
