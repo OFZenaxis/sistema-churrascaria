@@ -16,7 +16,7 @@ type RegisterInput = {
 }
 
 type RegisterResult =
-  | { success: true; slug: string }
+  | { success: true; slug: string; storeId: string }
   | { success: false; error: string }
 
 export async function registerNewStore(data: RegisterInput): Promise<RegisterResult> {
@@ -132,5 +132,5 @@ export async function registerNewStore(data: RegisterInput): Promise<RegisterRes
     sameSite: 'strict',
   })
 
-  return { success: true, slug: store.slug }
+  return { success: true, slug: store.slug, storeId: store.id }
 }

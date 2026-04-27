@@ -34,6 +34,8 @@ model Store {
   // SaaS Control
   tier     SubscriptionTier @default(BASIC)
   isActive Boolean          @default(true)
+  subscriptionStatus       String  @default("PENDING")
+  abacatepaySubscriptionId String?
 
   // Feature Flags
   features Json? // Ex: { "kds": false, "gamification": false, "upsell": true }

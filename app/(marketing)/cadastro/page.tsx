@@ -149,6 +149,7 @@ export default function CadastroPage() {
   const [slugStatus, setSlugStatus] = useState<SlugStatus>('idle')
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isRedirecting, setIsRedirecting] = useState(false)
   const [error, setError] = useState('')
   // Whether the user has manually edited the slug field
   const [slugTouched, setSlugTouched] = useState(false)
@@ -221,6 +222,7 @@ export default function CadastroPage() {
     if (!step3Valid) return
     setError('')
     setIsSubmitting(true)
+    let isRedirectingNow = false
     try {
       const result = await registerNewStore({
         ownerName: formData.ownerName,
@@ -231,16 +233,38 @@ export default function CadastroPage() {
         phone: formData.phone,
       })
       if (result.success) {
-        const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
-        window.location.href = `https://${result.slug}.${BASE_DOMAIN}/admin`
-
+        setIsRedirecting(true)
+        isRedirectingNow = true
+        try {
+          const checkoutRes = await fetch('/api/pagamentos/checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ storeId: result.storeId }),
+          })
+          const checkoutData = await checkoutRes.json()
+          
+          if (checkoutData.success && checkoutData.url) {
+            window.location.href = checkoutData.url
+            return
+          } else {
+            setError(checkoutData.error || 'Erro ao gerar checkout de pagamento.')
+            setIsRedirecting(false)
+            isRedirectingNow = false
+          }
+        } catch (err) {
+          setError('Erro de conexão com gateway de pagamento.')
+          setIsRedirecting(false)
+          isRedirectingNow = false
+        }
       } else {
         setError(result.error)
       }
     } catch {
       setError('Erro de conexão com o servidor. Tente novamente em instantes.')
     } finally {
-      setIsSubmitting(false)
+      if (!isRedirectingNow) {
+        setIsSubmitting(false)
+      }
     }
   }
 
@@ -592,13 +616,13 @@ export default function CadastroPage() {
             {step === 3 && (
               <button
                 type="submit"
-                disabled={isSubmitting || !step3Valid}
+                disabled={isSubmitting || isRedirecting || !step3Valid}
                 className="ml-auto flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] transition-all py-4 rounded-xl text-white font-black text-base shadow-lg shadow-emerald-500/25"
               >
-                {isSubmitting ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Criando sua loja...</>
+                {isSubmitting || isRedirecting ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> {isRedirecting ? 'Gerando link de pagamento...' : 'Criando sua loja...'}</>
                 ) : (
-                  <><Lock className="w-4 h-4" /> Finalizar e Criar Minha Loja</>
+                  <><Lock className="w-4 h-4" /> Pagar e Ativar Conta</>
                 )}
               </button>
             )}

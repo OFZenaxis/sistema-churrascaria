@@ -18,9 +18,14 @@ export default async function AdminDashboardLayout({
   // Resolve o tenant primeiro — necessário para isolar o cookie correto
   const store = await prisma.store.findFirst({
     where: tenantWhere(slug),
-    select: { id: true, slug: true, name: true, logoUrl: true, kitchenPin: true }
+    select: { id: true, slug: true, name: true, logoUrl: true, kitchenPin: true, subscriptionStatus: true }
   })
   if (!store) notFound()
+
+  // Bloqueio de Inadimplentes / Adesão Pendente
+  if (store.subscriptionStatus === 'PENDING' || store.subscriptionStatus === 'CANCELED') {
+    redirect('/admin/pagamento')
+  }
 
   // 🔒 Lê o cookie isolado deste tenant específico
   // try/catch garante redirect elegante mesmo se o cookie store ou HMAC lançar exceção (W-06)
