@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger'
 import { getLojistaSession, requireAdminSession } from '@/app/actions/adminAuth'
 
 export async function toggleProductActive(productId: string, currentStatus: boolean, storeId: string) {
-  if (!storeId) throw new Error('Tenant não identificado')
+  if (!await requireAdminSession(storeId)) return { success: false, error: 'Não autorizado.' }
 
   try {
     // 🔒 storeId obrigatório no where — impede mutação em produto de outro tenant
@@ -68,7 +68,7 @@ export async function saveProduct(data: {
 }
 
 export async function toggleStoreStatus(currentStatus: boolean, storeId: string) {
-  if (!storeId) throw new Error('Tenant não identificado')
+  if (!await requireAdminSession(storeId)) return { success: false, error: 'Não autorizado.' }
 
   try {
     // 🔒 storeId obrigatório — admin só pode operar sua própria loja
@@ -306,7 +306,7 @@ export async function deleteDeliveryZone(id: string, storeId: string) {
 }
 
 export async function toggleDeliveryZoneActive(id: string, storeId: string, currentStatus: boolean) {
-  if (!storeId) throw new Error('Tenant não identificado')
+  if (!await requireAdminSession(storeId)) return { success: false, error: 'Não autorizado.' }
 
   try {
     await prisma.deliveryZone.update({

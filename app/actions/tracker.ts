@@ -3,8 +3,12 @@
 import { prisma } from '@/lib/prisma'
 import { getSessionUser } from './auth'
 import { getLojistaSession } from './adminAuth'
+import { logger } from '@/lib/logger'
 
 export async function updateMotoboyLocation(orderId: string, lat: number, lng: number, storeId: string) {
+  const session = await getLojistaSession(storeId)
+  if (!session) return { success: false, error: 'Não autorizado' }
+
   // BUG-005: Rejeita NaN, Infinity e valores fora dos limites geográficos válidos
   if (
     typeof lat !== 'number' || typeof lng !== 'number' ||
@@ -16,12 +20,12 @@ export async function updateMotoboyLocation(orderId: string, lat: number, lng: n
 
   try {
     await prisma.order.update({
-      where: { id: orderId, storeId }, // 🔒 storeId obrigatório — impede update cross-tenant
+      where: { id: orderId, storeId: session.storeId },
       data: { driverLat: lat, driverLng: lng }
     })
     return { success: true }
   } catch (error) {
-    console.error("[tracker] Erro ao atualizar localização:", error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('tracker', 'Erro ao atualizar localização: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false }
   }
 }

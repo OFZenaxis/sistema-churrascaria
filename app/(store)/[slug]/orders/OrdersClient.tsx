@@ -185,7 +185,7 @@ export default function OrdersClient({ orders: initialOrders, slug, storeId, sto
               key={s.label}
               className="flex flex-col items-center justify-center gap-2 py-4 rounded-2xl border transition-transform active:scale-95 shadow-sm"
               style={{ background: phoneCard, borderColor: border }}
-              onClick={() => console.log(`[shortcut] ${s.label}`)}
+              onClick={() => {}}
             >
               <div className="p-2.5 rounded-full" style={{ backgroundColor: brandColor + '15', color: brandColor }}>
                 {s.icon}
@@ -373,7 +373,7 @@ export default function OrdersClient({ orders: initialOrders, slug, storeId, sto
 
                     {isDelivered && (
                       <button
-                        onClick={() => console.log('[reorder]', order.id)}
+                        onClick={() => {}}
                         className="flex items-center gap-1.5 shrink-0 px-3 py-1.5 rounded-xl transition-all active:scale-95"
                         style={{ backgroundColor: brandColor + '15', color: brandColor }}
                       >

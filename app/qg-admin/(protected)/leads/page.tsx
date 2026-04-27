@@ -4,6 +4,7 @@ import { Magnet } from 'lucide-react'
 export default async function QGLeadsPage() {
   const leads = await prisma.partialLead.findMany({
     orderBy: { createdAt: 'desc' },
+    take: 500,
   })
 
   return (

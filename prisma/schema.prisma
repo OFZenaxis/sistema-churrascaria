@@ -110,6 +110,7 @@ model Customer {
   addresses Address[]
 
   @@unique([storeId, phone]) // Um telefone só pode ter um cadastro único por loja
+  @@index([storeId])
 }
 
 // ======= ADDRESSES =======
@@ -164,6 +165,8 @@ model Product {
 
   orderItems OrderItem[]
   options    ProductOption[] // BUG-020: upsell / acompanhamentos configuráveis
+
+  @@index([storeId])
 }
 
 // ======= PRODUCT OPTIONS (BUG-020) =======
@@ -238,6 +241,10 @@ model Order {
   items     OrderItem[]
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+
+  @@index([storeId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 enum MeatDoneness {
@@ -290,9 +297,13 @@ model Delivery {
 
 // ======= MARKETING / LEADS =======
 model PartialLead {
-  id        String   @id @default(uuid())
+  id      String  @id @default(uuid())
+  storeId String? // tenant de origem (nullable para manter compatibilidade com leads existentes)
+
   name      String?
   email     String?
   phone     String?
   createdAt DateTime @default(now())
+
+  @@index([storeId])
 }

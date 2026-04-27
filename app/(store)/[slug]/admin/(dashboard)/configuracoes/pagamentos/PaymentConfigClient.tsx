@@ -16,12 +16,12 @@ import { savePaymentConfig } from '@/app/actions/paymentConfig'
 type Props = {
   initial: {
     mpPublicKey: string
-    mpAccessToken: string
+    hasAccessToken: boolean
   }
 }
 
 export default function PaymentConfigClient({ initial }: Props) {
-  const [form, setForm] = useState(initial)
+  const [form, setForm] = useState({ mpPublicKey: initial.mpPublicKey, mpAccessToken: '' })
   const [showToken, setShowToken] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
@@ -93,12 +93,17 @@ export default function PaymentConfigClient({ initial }: Props) {
             <p className="text-xs text-slate-400 font-medium">Chave secreta — nunca compartilhe</p>
           </div>
         </div>
+        {initial.hasAccessToken && !form.mpAccessToken && (
+          <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 mb-3 font-medium">
+            Token configurado. Deixe em branco para manter o atual ou preencha para substituir.
+          </p>
+        )}
         <div className="relative">
           <input
             type={showToken ? 'text' : 'password'}
             value={form.mpAccessToken}
             onChange={e => setForm(f => ({ ...f, mpAccessToken: e.target.value }))}
-            placeholder="APP_USR-0000000000000000-000000-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-000000000"
+            placeholder={initial.hasAccessToken ? '••••••••••••••••••••••• (manter atual)' : 'APP_USR-0000000000000000-000000-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-000000000'}
             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 pr-12 text-sm font-mono text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent transition"
             spellCheck={false}
             autoComplete="off"

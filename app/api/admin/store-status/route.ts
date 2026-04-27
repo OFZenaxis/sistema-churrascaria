@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { headers } from 'next/headers';
+import { getLojistaSession } from '@/app/actions/adminAuth';
 
 // FASE 3: STORE STATUS DA MASTER STORE (OU TENANT ATIVO)
 
@@ -42,12 +43,17 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
     const store = await getActiveStore();
-
     if (!store) {
-      return NextResponse.json({ error: 'SaaS não configurado.' }, { status: 400 })
+      return NextResponse.json({ error: 'Tenant não identificado.' }, { status: 401 })
     }
+
+    const session = await getLojistaSession(store.id);
+    if (!session) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
+
+    const body = await req.json()
     
     const updatedStore = await prisma.store.update({
       where: { id: store.id },

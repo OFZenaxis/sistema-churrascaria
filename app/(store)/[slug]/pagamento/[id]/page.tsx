@@ -23,10 +23,12 @@ export default async function PagamentoPage({
   // 🔒 Valida que o pedido pertence à loja deste slug antes de renderizar
   const store = await prisma.store.findFirst({
     where: { slug },
-    select: { id: true }
+    select: { id: true, phone: true }
   })
 
   if (!store || order.storeId !== store.id) notFound()
+
+  const storePhone = store.phone ?? null
 
   // Já pago — redireciona para a tela de acompanhamento
   if (order.paymentStatus === 'approved' || order.paymentStatus === 'PAID') {
@@ -62,7 +64,7 @@ export default async function PagamentoPage({
               </p>
             </div>
           ) : method === 'PIX' ? (
-            <PaymentPixClient orderId={order.id} amount={order.totalAmount} customerEmail={customerEmail} />
+            <PaymentPixClient orderId={order.id} amount={order.totalAmount} customerEmail={customerEmail} storePhone={storePhone} />
           ) : (
             <PaymentClient
               orderId={order.id}

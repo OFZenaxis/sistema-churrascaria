@@ -4,6 +4,7 @@ import { Store, Eye, PowerOff } from 'lucide-react'
 export default async function QGLojasPage() {
   const stores = await prisma.store.findMany({
     orderBy: { createdAt: 'desc' },
+    take: 200,
     select: {
       id: true,
       name: true,

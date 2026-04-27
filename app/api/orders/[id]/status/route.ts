@@ -3,13 +3,13 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 import { verifyPayload } from '@/lib/session';
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
 
     const order = await prisma.order.findUnique({
       where: { id },
-      select: { status: true, paymentStatus: true, storeId: true }
+      select: { status: true, paymentStatus: true, storeId: true, customerId: true }
     });
 
     if (!order) return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
@@ -33,9 +33,19 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (sessionRaw) {
       const payload = verifyPayload(sessionRaw)
       if (payload) {
-        const [cookieStoreId] = payload.split('|')
-        if (cookieStoreId === order.storeId) {
-          return NextResponse.json({ status: order.status, paymentStatus: order.paymentStatus })
+        const parts = payload.split('|')
+        if (parts.length === 2) {
+          const [cookieStoreId, phone] = parts
+          // BUG-043: verifica que o cliente é dono do pedido (anti-IDOR)
+          if (cookieStoreId === order.storeId && order.customerId) {
+            const customer = await prisma.customer.findUnique({
+              where: { storeId_phone: { storeId: order.storeId, phone } },
+              select: { id: true }
+            })
+            if (customer?.id === order.customerId) {
+              return NextResponse.json({ status: order.status, paymentStatus: order.paymentStatus })
+            }
+          }
         }
       }
     }

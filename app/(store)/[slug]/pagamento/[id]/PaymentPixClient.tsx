@@ -7,7 +7,7 @@ import { Copy, Check, Loader2, QrCode, MessageCircle } from 'lucide-react'
 const POLL_INTERVAL_MS = 4_000
 const TIMEOUT_MS = 15 * 60 * 1_000 // 15 minutos
 
-export default function PaymentPixClient({ orderId, amount, customerEmail }: { orderId: string, amount: number, customerEmail: string }) {
+export default function PaymentPixClient({ orderId, amount, customerEmail, storePhone }: { orderId: string, amount: number, customerEmail: string, storePhone: string | null }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [qrBase64, setQrBase64] = useState('')
@@ -141,15 +141,17 @@ export default function PaymentPixClient({ orderId, amount, customerEmail }: { o
             fale com o suporte.
           </p>
         </div>
-        <a
-          href="https://wa.me/5561995783461"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-white font-black text-sm px-6 py-3 rounded-xl transition-all shadow-lg shadow-green-900/30"
-        >
-          <MessageCircle className="w-4 h-4" />
-          Falar com suporte no WhatsApp
-        </a>
+        {storePhone && (
+          <a
+            href={`https://wa.me/${storePhone.replace(/\D/g, '')}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] active:scale-95 text-white font-black text-sm px-6 py-3 rounded-xl transition-all shadow-lg shadow-green-900/30"
+          >
+            <MessageCircle className="w-4 h-4" />
+            Falar com suporte no WhatsApp
+          </a>
+        )}
         <button
           onClick={startPolling}
           className="text-zinc-500 text-xs font-bold underline hover:text-zinc-300 transition-colors"

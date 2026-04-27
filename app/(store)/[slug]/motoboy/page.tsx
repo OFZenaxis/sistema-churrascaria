@@ -15,7 +15,7 @@ export default async function MotoboyPage({ params }: { params: Promise<{ slug: 
   // 🔒 Resolve o tenant correto a partir do slug/domínio
   const store = await prisma.store.findFirst({
     where: isDomain ? { customDomain: slug } : { slug },
-    select: { id: true, slug: true, lat: true, lng: true }
+    select: { id: true, slug: true, storeLat: true, storeLng: true }
   })
 
   if (!store) {
@@ -75,8 +75,8 @@ export default async function MotoboyPage({ params }: { params: Promise<{ slug: 
       myRides={rides.filter(r => r.status === 'DISPATCHED') as any}
       completedRidesTotal={completedRides.length}
       totalEarned={totalEarned}
-      storeLat={store.lat ?? null}
-      storeLng={store.lng ?? null}
+      storeLat={store.storeLat ?? null}
+      storeLng={store.storeLng ?? null}
     />
   )
 }

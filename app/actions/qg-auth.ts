@@ -33,7 +33,7 @@ export async function loginQGAdmin(pin: string): Promise<{ error: string } | nev
   const cookieStore = await cookies()
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: false,
+    secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
     maxAge: MAX_AGE_SECONDS,
     path: '/qg-admin',

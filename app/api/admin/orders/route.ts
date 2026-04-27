@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { headers } from 'next/headers';
+import { getLojistaSession } from '@/app/actions/adminAuth';
 
 // FASE 3: PEDIDOS MULTI-TENANT COM MIDDLEWARE INJECTS
 
@@ -32,6 +33,11 @@ export async function GET(req: Request) {
     const store = await getActiveStore();
     if (!store) {
       return NextResponse.json({ error: 'Tenant não identificado' }, { status: 401 });
+    }
+
+    const session = await getLojistaSession(store.id);
+    if (!session) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -83,11 +89,14 @@ export async function PUT(req: Request) {
        return NextResponse.json({ error: 'Status inválido' }, { status: 400 });
      }
      
-     // 🔒 Segurança: Mesmo na atualização de status, garantimos que não vaze tenant
      const store = await getActiveStore();
-
      if (!store) {
-       return NextResponse.json({ error: 'SaaS Desconfigurado' }, { status: 500 });
+       return NextResponse.json({ error: 'Tenant não identificado' }, { status: 401 });
+     }
+
+     const session = await getLojistaSession(store.id);
+     if (!session) {
+       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
      }
 
      await prisma.order.update({ 

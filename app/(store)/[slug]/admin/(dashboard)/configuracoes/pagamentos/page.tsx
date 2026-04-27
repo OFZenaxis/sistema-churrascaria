@@ -39,7 +39,7 @@ export default async function PagamentosConfigPage({
       <PaymentConfigClient
         initial={{
           mpPublicKey: config?.mpPublicKey ?? '',
-          mpAccessToken: config?.mpAccessToken ?? '',
+          hasAccessToken: !!config?.mpAccessToken,
         }}
       />
     </div>

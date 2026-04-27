@@ -2,9 +2,12 @@
 
 import { prisma } from '@/lib/prisma'
 import { OrderStatus } from '@prisma/client'
+import { requireAdminSession } from '@/app/actions/adminAuth'
+import { logger } from '@/lib/logger'
 
 export async function advanceOrderStatus(orderId: string, currentStatus: OrderStatus, storeId: string) {
-  if (!storeId) throw new Error('Tenant não identificado')
+  const session = await requireAdminSession(storeId)
+  if (!session) return { success: false, error: 'Não autorizado' }
 
   try {
     let nextStatus: OrderStatus = OrderStatus.PENDING
@@ -13,15 +16,14 @@ export async function advanceOrderStatus(orderId: string, currentStatus: OrderSt
     else if (currentStatus === 'PREPARING') nextStatus = 'READY_FOR_PICKUP'
     else return { success: false, error: 'Status final finalizado' }
 
-    // 🔒 storeId no where garante que o pedido pertence ao tenant do admin logado
     await prisma.order.update({
-      where: { id: orderId, storeId },
+      where: { id: orderId, storeId: session.storeId },
       data: { status: nextStatus }
     })
 
     return { success: true, newStatus: nextStatus }
   } catch (error) {
-    console.error("[kitchen] Erro advanceOrderStatus:", error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('kitchen', 'Erro advanceOrderStatus: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false }
   }
 }

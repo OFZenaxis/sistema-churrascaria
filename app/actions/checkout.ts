@@ -20,9 +20,13 @@ export async function estimateDeliveryFee(
   storeId: string
 ): Promise<{ fee: number; distanceKm: number | null; outOfRange: boolean; isEstimated?: boolean; error?: string }> {
   try {
+    // BUG-031: verifica ownership — address deve pertencer ao customer autenticado
+    const user = await getSessionUser(storeId)
+    if (!user) return { fee: 0, distanceKm: null, outOfRange: false, isEstimated: true }
+
     const [address, store] = await Promise.all([
       prisma.address.findFirst({
-        where: { id: addressId },
+        where: { id: addressId, customerId: user.id },
         select: { lat: true, lng: true, rua: true, numero: true, bairro: true, cidade: true, estado: true }
       }),
       prisma.store.findUnique({

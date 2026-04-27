@@ -3,37 +3,39 @@
 import { prisma } from '@/lib/prisma'
 import { OrderStatus } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
+import { requireAdminSession } from '@/app/actions/adminAuth'
+import { logger } from '@/lib/logger'
 
 export async function acceptRide(orderId: string, storeId: string, slug: string) {
-  if (!storeId) throw new Error('Tenant não identificado')
+  const session = await requireAdminSession(storeId)
+  if (!session) return { success: false, error: 'Não autorizado' }
 
   try {
-    // 🔒 storeId no where garante que o motoboy só opera pedidos do seu tenant
     await prisma.order.update({
-      where: { id: orderId, storeId },
+      where: { id: orderId, storeId: session.storeId },
       data: { status: OrderStatus.DISPATCHED }
     })
     revalidatePath(`/${slug}/motoboy`)
     return { success: true }
   } catch (error) {
-    console.error("[driver] Erro ao aceitar corrida:", error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('driver', 'Erro ao aceitar corrida: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao aceitar' }
   }
 }
 
 export async function finishRide(orderId: string, storeId: string, slug: string) {
-  if (!storeId) throw new Error('Tenant não identificado')
+  const session = await requireAdminSession(storeId)
+  if (!session) return { success: false, error: 'Não autorizado' }
 
   try {
-    // 🔒 storeId no where garante que o motoboy só finaliza pedidos do seu tenant
     await prisma.order.update({
-      where: { id: orderId, storeId },
+      where: { id: orderId, storeId: session.storeId },
       data: { status: OrderStatus.DELIVERED }
     })
     revalidatePath(`/${slug}/motoboy`)
     return { success: true }
   } catch (error) {
-    console.error("[driver] Erro ao finalizar corrida:", error instanceof Error ? error.message : 'Erro desconhecido')
+    logger.error('driver', 'Erro ao finalizar corrida: ' + (error instanceof Error ? error.message : 'Erro desconhecido'), error)
     return { success: false, error: 'Erro ao finalizar' }
   }
 }

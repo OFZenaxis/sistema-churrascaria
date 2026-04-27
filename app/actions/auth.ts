@@ -1,15 +1,24 @@
 "use server"
 
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { signPayload, verifyPayload } from '@/lib/session'
 import { logger } from '@/lib/logger'
+import { rateLimit } from '@/lib/ratelimit'
 
 export async function loginWithPhone(phone: string, customerName?: string, storeId?: string) {
   if (!storeId) throw new Error('Tenant não identificado: storeId ausente no login')
 
   try {
+    // BUG-033: rate limit por IP — 5 tentativas por 15 minutos
+    const headerStore = await headers()
+    const ip = headerStore.get('x-forwarded-for') ?? headerStore.get('x-real-ip') ?? 'unknown'
+    const rl = rateLimit(`phone_login:${ip}`, 5, 15 * 60_000)
+    if (!rl.ok) {
+      return { success: false, error: 'Muitas tentativas. Tente novamente em alguns minutos.' }
+    }
+
     const formattedPhone = phone.replace(/\D/g, '')
     if (formattedPhone.length < 10) return { success: false, error: 'Número inválido' }
 
@@ -66,7 +75,8 @@ export async function getSessionUser(storeId?: string) {
     where: { storeId_phone: { storeId, phone } },
     include: {
       addresses: {
-        orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }]
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+        take: 10
       }
     }
   })

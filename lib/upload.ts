@@ -20,7 +20,7 @@ export async function uploadImage(file: File, storeId: string): Promise<string> 
   }
 
   const ext = file.name.split('.').pop() ?? 'jpg'
-  const path = `${storeId}/${Date.now()}.${ext}`
+  const path = `${storeId}/${crypto.randomUUID()}.${ext}`
 
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
     cacheControl: '3600',

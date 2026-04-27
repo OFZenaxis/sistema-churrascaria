@@ -15,6 +15,19 @@ export function proxy(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // BUG-050: bloqueia /dev/* em produção na borda — defense-in-depth caso NODE_ENV não esteja configurado corretamente
+  if (process.env.NODE_ENV === 'production' && pathname.startsWith('/dev')) {
+    return new NextResponse(null, { status: 404 })
+  }
+
+  // BUG-040: protege rotas /qg-admin/* — exige cookie JWT do super-admin
+  if (pathname.startsWith('/qg-admin') && !pathname.startsWith('/qg-admin/login')) {
+    const qgCookie = req.cookies.get('qg_access_token')
+    if (!qgCookie) {
+      return NextResponse.redirect(new URL('/qg-admin/login', req.url))
+    }
+  }
+
   // 2. Determina se é domínio raiz (marketing) ou tenant (subdomínio/custom domain)
   //    — Calculado cedo para ser usado na proteção admin e no roteamento
   const isRootDomain =
