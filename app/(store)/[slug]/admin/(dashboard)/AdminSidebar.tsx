@@ -16,6 +16,7 @@ import {
   Palette,
   Copy,
   Check,
+  Receipt,
 } from 'lucide-react'
 import { logoutLojista } from '@/app/actions/adminAuth'
 import { useSidebar } from './SidebarContext'
@@ -59,8 +60,9 @@ export default function AdminSidebar({
   ]
 
   const bottomItems = [
+    { href: '/admin/assinatura',               label: 'Assinatura',     icon: Receipt },
     { href: '/admin/personalizacao',           label: 'Personalização', icon: Palette },
-    { href: '/admin/configuracoes/pagamentos', label: 'Pagamentos',     icon: CreditCard },
+    { href: '/admin/configuracoes/pagamentos', label: 'Meios de Pag.',  icon: CreditCard },
     { href: '/admin/configuracoes',            label: 'Configurações',  icon: Settings },
   ]
 

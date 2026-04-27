@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
-
-const PLANO_MENSAL_ID = 'prod_mpwpRhQnFKRd51QFFZFAb3K0';
+import { prisma } from '@/lib/prisma';
 
 export async function POST(req: Request) {
   try {
     const apiKey = process.env.ABACATEPAY_API_KEY;
+    const productId = process.env.ABACATEPAY_PRODUCT_ID;
     
-    if (!apiKey) {
-      console.error('ABACATEPAY_API_KEY não configurada.');
+    if (!apiKey || !productId) {
+      console.error('Variáveis ABACATEPAY_API_KEY ou ABACATEPAY_PRODUCT_ID não configuradas.');
       return NextResponse.json(
         { success: false, error: 'Erro interno de configuração do servidor.' },
         { status: 500 }
@@ -24,19 +24,36 @@ export async function POST(req: Request) {
     
     const { storeId } = body;
 
+    // Busca a loja para montar a URL do tenant dinamicamente
+    let storeSlug = null;
+    if (storeId) {
+      const store = await prisma.store.findUnique({ where: { id: storeId }, select: { slug: true } });
+      if (store) {
+        storeSlug = store.slug;
+      }
+    }
+
     // Define a URL base para o retorno após o pagamento
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
-    const returnUrl = `${appUrl}/qg-admin`; // Redireciona para o painel após o pagamento
+    const baseDomain = process.env.NEXT_PUBLIC_BASE_DOMAIN || 'saiudelivery.com.br';
+    const isLocalhost = appUrl.includes('localhost');
+    const protocol = isLocalhost ? 'http://' : 'https://';
+    
+    // Monta a URL de redirecionamento para o dashboard do lojista
+    const redirectUrl = storeSlug 
+      ? `${protocol}${storeSlug}.${baseDomain}/admin` 
+      : `${appUrl}/admin/login`;
 
     const payload: any = {
       items: [
         {
-          id: PLANO_MENSAL_ID,
+          id: productId,
           quantity: 1,
         },
       ],
       methods: ['CARD'], // Assinaturas na AbacatePay suportam apenas cartão
-      returnUrl,
+      returnUrl: redirectUrl,      // Link para o cliente voltar caso cancele
+      completionUrl: redirectUrl,  // Auto-redirect ao finalizar o pagamento com sucesso
     };
 
     if (storeId) {
