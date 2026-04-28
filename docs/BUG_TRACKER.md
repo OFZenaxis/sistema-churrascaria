@@ -1,7 +1,7 @@
 # BUG TRACKER — Saiu Delivery SaaS
 
 > **Documento Oficial de Engenharia — Leitura obrigatória para todo o time.**
-> Última atualização: 2026-04-27 (Segunda auditoria completa — 46 novos itens identificados)
+> Última atualização: 2026-04-27 (Auditoria AbacatePay — 9 novos itens identificados e resolvidos)
 
 ---
 
@@ -21,6 +21,103 @@
 | RESOLVIDO | Corrigido e deployado |
 
 ---
+
+---
+
+## AUDITORIA 3 — ABACATEPAY — 2026-04-27 (9 itens)
+
+> Auditoria focada no módulo de monetização AbacatePay (webhook, server actions, página de assinatura, rota de checkout).
+> Todos os 9 itens encontrados foram resolvidos na mesma sessão.
+
+---
+
+### BUG-067 — HMAC key hardcoded no fonte do webhook
+
+- **Arquivo:** `app/api/webhooks/abacatepay/route.ts` — constante `ABACATEPAY_PUBLIC_KEY`
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-27):** Constante removida. Chave lida de `process.env.ABACATEPAY_HMAC_KEY` via `getHmacKey()`. Boot guard `if (!process.env.ABACATEPAY_HMAC_KEY) throw` adicionado. Sem a variável, o servidor recusa inicialização.
+- **Descrição:** Chave HMAC de 189 chars usada para verificar assinaturas de webhook estava hardcoded no código-fonte. Qualquer pessoa com acesso ao repositório podia ler a chave. Impossível rotacionar sem redeploy.
+- **Impacto:** 🔴 CRÍTICO — chave comprometida invalida toda a camada HMAC do webhook.
+
+---
+
+### BUG-068 — `cancelSubscription` sem autenticação — IDOR via Client Component
+
+- **Arquivo:** `app/actions/abacatepay.ts` — função `cancelSubscription`
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-27):** `requireAdminSession(storeId)` adicionado como primeira instrução. Retorna `{ success: false, error: 'Não autorizado' }` sem tocar no banco se sessão ausente ou de outro tenant.
+- **Descrição:** Server Action chamada diretamente de `CancelSubscriptionButton` (Client Component) aceitava `storeId` do cliente sem verificar sessão. Lojista A podia cancelar a assinatura de Lojista B passando o UUID da loja B.
+- **Impacto:** 🔴 CRÍTICO — IDOR de autorização em operação financeira destrutiva.
+
+---
+
+### BUG-069 — `console.log` de debug vazando `storeId` no webhook em produção
+
+- **Arquivo:** `app/api/webhooks/abacatepay/route.ts` — linhas 61, 78, 86
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-27):** Três `console.log` removidos. `console.error` substituído por `logger.error`. `console.warn` substituído por `logger.warn`.
+- **Descrição:** Três chamadas de debug em produção incluindo `console.log('Store ID extraído: ', storeId)`, expondo dados internos em logs.
+- **Impacto:** 🟠 ALTO — violação de CLAUDE.md Lei 10 e potencial exposição de dados em logs.
+
+---
+
+### BUG-070 — Evento `subscription.renewed` não tratado no webhook
+
+- **Arquivo:** `app/api/webhooks/abacatepay/route.ts`
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-27):** Handler adicionado para `subscription.renewed` → `subscriptionStatus: 'ACTIVE'` + atualiza `abacatepaySubscriptionId`. Separado de `checkout.completed` que só atualiza o status (sem sobrescrever o subscriptionId).
+- **Descrição:** AbacatePay envia `subscription.renewed` a cada renovação bem-sucedida. Evento ignorado: se a loja estivesse com status incorreto, a renovação não a reativava.
+- **Impacto:** 🟠 ALTO — loja potencialmente bloqueada mesmo após pagamento recorrente.
+
+---
+
+### BUG-071 — `abacatepaySubscriptionId` sobrescrito incorretamente em `checkout.completed`
+
+- **Arquivo:** `app/api/webhooks/abacatepay/route.ts` — lógica de update
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-27):** `subscription.completed` e `subscription.renewed` atualizam o `abacatepaySubscriptionId` com `data.subscription.id`. `checkout.completed` só atualiza `subscriptionStatus: 'ACTIVE'` — não sobrescreve o ID (que pertence à assinatura, não ao checkout).
+- **Descrição:** Para o evento `checkout.completed`, o código salvava `data.checkout.id` como `abacatepaySubscriptionId`. Checkout ID ≠ Subscription ID. O endpoint de cancelamento espera o ID de assinatura — operação de cancelamento quebraria silenciosamente.
+- **Impacto:** 🟠 ALTO — cancelamento de assinatura via painel falharia para lojas ativadas via `checkout.completed`.
+
+---
+
+### BUG-072 — Condição duplicada no fallback de `getSubscriptionData`
+
+- **Arquivo:** `app/actions/abacatepay.ts:44`
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-27):** Condição `s.id === subId || s.id === subId` (ambas idênticas) simplificada para `s.id === subId`. Estratégia invertida: usa diretamente `subscriptions/list` e filtra pelo ID, evitando tentativa dupla desnecessária.
+- **Descrição:** Bug lógico — o `||` nunca avaliava uma condição diferente. Uma das branches era inútil, mascando a ausência de um critério de busca alternativo real.
+- **Impacto:** 🟠 ALTO — fallback de busca de assinatura completamente ineficaz.
+
+---
+
+### BUG-073 — `console.error` em vez de `logger.error` nas actions e rota de checkout
+
+- **Arquivo:** `app/actions/abacatepay.ts` (3 ocorrências) + `app/api/pagamentos/checkout/route.ts` (3 ocorrências)
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-27):** Todos substituídos por `logger.error('módulo', 'mensagem', err)`. Erros críticos agora capturados pelo Sentry quando `SENTRY_DSN` estiver configurado.
+- **Descrição:** Violação do padrão `lib/logger.ts` estabelecido no projeto. Erros de pagamento sem rastreamento no Sentry.
+- **Impacto:** 🟡 MÉDIO — falhas silenciosas em produção sem alerta.
+
+---
+
+### BUG-074 — `any` types em código de pagamento (`abacatepay.ts`, `checkout/route.ts`, `page.tsx`)
+
+- **Arquivo:** múltiplos
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-27):** Tipos `AbacateSubData`, `AbacateCheckout` e `AbacateCheckoutPayload` criados e exportados de `abacatepay.ts`. `invoice: any` no map da tabela eliminado. `payload: any` no checkout substituído por interface tipada. `body` tipado como `{ storeId?: string }`.
+- **Descrição:** Múltiplos `any` em código que processa dados financeiros. Viola CLAUDE.md Lei 7.
+- **Impacto:** 🟡 MÉDIO — sem type-safety em operações de pagamento.
+
+---
+
+### BUG-075 — WhatsApp de suporte hardcoded na página de assinatura
+
+- **Arquivo:** `app/(store)/[slug]/admin/(dashboard)/assinatura/page.tsx:152`
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-04-27):** Link usa `process.env.NEXT_PUBLIC_SUPPORT_PHONE` com fallback para o número anterior. Ao definir a variável, nenhum redeploy de código é necessário para trocar o número de suporte.
+- **Descrição:** `wa.me/5561995783461` hardcoded. Padrão idêntico ao BUG-047 (já resolvido). Número pessoal exposto no código-fonte.
+- **Impacto:** 🟡 MÉDIO — suporte vai para número errado se o contato mudar.
 
 ---
 

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Loader2, Lock, ShieldAlert } from 'lucide-react'
+import { Loader2, Lock } from 'lucide-react'
+import Image from 'next/image'
 import { loginQGAdmin } from '@/app/actions/qg-auth'
 
 export default function QGLoginPage() {
@@ -31,13 +32,10 @@ export default function QGLoginPage() {
       <div className="relative w-full max-w-sm">
         {/* Logo mark */}
         <div className="flex justify-center mb-8">
-          <div className="w-14 h-14 bg-rose-600/10 border border-rose-600/20 rounded-2xl flex items-center justify-center">
-            <ShieldAlert className="w-7 h-7 text-rose-500" />
-          </div>
+          <Image src="/logo-full.png" alt="Saiu Delivery" width={200} height={56} className="h-10 w-auto filter brightness-0 invert" priority />
         </div>
-
+        
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-black text-white tracking-tight">Quartel General</h1>
           <p className="text-slate-500 text-sm font-medium mt-1">Acesso restrito. Insira o PIN de operação.</p>
         </div>
 

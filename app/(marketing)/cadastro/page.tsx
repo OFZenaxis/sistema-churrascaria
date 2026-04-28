@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import Image from 'next/image'
 import {
   Flame,
   CheckCircle2,
@@ -277,13 +278,8 @@ export default function CadastroPage() {
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-3xl translate-x-1/3 -translate-y-1/3 pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-3xl -translate-x-1/3 translate-y-1/3 pointer-events-none" />
 
-        <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <Flame className="w-6 h-6 text-white fill-white" strokeWidth={1.5} />
-          </div>
-          <span className="text-white font-black text-2xl tracking-tight">
-            Saiu<span className="text-emerald-400">Delivery</span>
-          </span>
+        <div className="relative z-10 flex items-center">
+          <Image src="/logo-full.png" alt="Saiu Delivery" width={200} height={56} className="h-10 w-auto filter brightness-0 invert" priority />
         </div>
 
         <div className="relative z-10 mt-16 mb-auto">
@@ -322,13 +318,8 @@ export default function CadastroPage() {
       <div className="flex-1 flex flex-col justify-center px-6 py-12 md:px-12 xl:px-20 overflow-y-auto">
 
         {/* Mobile logo */}
-        <div className="flex lg:hidden items-center gap-2.5 mb-10">
-          <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-md">
-            <Flame className="w-5 h-5 text-white fill-white" strokeWidth={1.5} />
-          </div>
-          <span className="text-slate-900 font-black text-xl tracking-tight">
-            Saiu<span className="text-emerald-500">Delivery</span>
-          </span>
+        <div className="flex lg:hidden items-center mb-10">
+          <Image src="/logo-full.png" alt="Saiu Delivery" width={200} height={56} className="h-8 w-auto" priority />
         </div>
 
         {/* Header */}

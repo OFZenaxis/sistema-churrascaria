@@ -31,11 +31,8 @@ function Header() {
     <header className="fixed top-0 inset-x-0 z-50 backdrop-blur-xl bg-white/75 border-b border-slate-200/80 shadow-sm">
       <div className="max-w-6xl mx-auto px-5 h-16 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2.5 focus:outline-none">
-          <Image src="/logo-icon.png" alt="Saiu Delivery" width={32} height={32} priority />
-          <span className="font-black text-lg text-slate-900">
-            Saiu<span className="text-green-600">Delivery</span>
-          </span>
+        <Link href="/" className="flex items-center focus:outline-none">
+          <Image src="/logo-full.png" alt="Saiu Delivery" width={200} height={56} className="h-8 w-auto" priority />
         </Link>
 
         {/* Nav + CTA */}

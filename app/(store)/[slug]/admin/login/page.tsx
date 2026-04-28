@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { Mail, Lock, ArrowRight, Loader2, AlertCircle } from 'lucide-react'
 import { loginLojista } from '@/app/actions/adminAuth'
 import { useParams } from 'next/navigation'
+import Image from 'next/image'
 
 export default function AdminLogin() {
   const params = useParams<{ slug: string }>()
@@ -39,10 +40,12 @@ export default function AdminLogin() {
 
         {/* Marca */}
         <div className="flex flex-col items-center mb-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             src="/logo-full.png"
             alt="Saiu Delivery"
+            width={200}
+            height={56}
+            priority
             className="w-48 h-auto mx-auto mb-6 object-contain"
           />
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">Painel do Lojista</h1>

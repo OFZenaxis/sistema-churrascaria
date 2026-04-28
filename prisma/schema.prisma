@@ -43,6 +43,10 @@ model Store {
   isOpen     Boolean @default(true)
   kitchenPin String? // PIN numérico para travar/destravar o KDS (por tenant)
 
+  // WhatsApp (Evolution API)
+  whatsappInstance  String? @unique // Nome da instância na Evolution API (ex: "loja-minha-churrascaria")
+  whatsappConnected Boolean @default(false)
+
   // Configurações de Entrega por GPS
   storeAddress      String? // Endereço completo para geocodificação
   storeLat          Float? // Latitude da loja (preenchida via Mapbox)

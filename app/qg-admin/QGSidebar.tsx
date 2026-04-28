@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useTransition } from 'react'
 import {
@@ -31,14 +32,8 @@ export default function QGSidebar() {
   return (
     <aside className="w-60 shrink-0 bg-slate-950 border-r border-slate-800/50 flex flex-col h-screen sticky top-0">
       {/* Logo */}
-      <div className="px-5 h-16 flex items-center gap-3 border-b border-slate-800/50">
-        <div className="w-8 h-8 bg-rose-600 rounded-lg flex items-center justify-center shadow-md shadow-rose-600/20">
-          <Flame className="w-4 h-4 text-white fill-white" strokeWidth={1.5} />
-        </div>
-        <div className="leading-tight">
-          <p className="text-white font-black text-sm tracking-tight">Quartel</p>
-          <p className="text-rose-500 font-black text-sm tracking-tight -mt-0.5">General</p>
-        </div>
+      <div className="px-5 h-16 flex items-center border-b border-slate-800/50">
+        <Image src="/logo-full.png" alt="Saiu Delivery" width={200} height={56} className="h-8 w-auto filter brightness-0 invert" priority />
       </div>
 
       {/* Nav */}

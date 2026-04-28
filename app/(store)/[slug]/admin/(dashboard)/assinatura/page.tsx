@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { tenantWhere } from '@/lib/tenant'
 import { notFound } from 'next/navigation'
-import { getSubscriptionData, getSubscriptionHistory } from '@/app/actions/abacatepay'
+import { getSubscriptionData, getSubscriptionHistory, type AbacateCheckout } from '@/app/actions/abacatepay'
 import CancelSubscriptionButton from './CancelSubscriptionButton'
 import { 
   ShieldCheck, 
@@ -30,15 +30,15 @@ export default async function AssinaturaPage({ params }: { params: Promise<{ slu
   if (!store) notFound()
 
   // Busca dados na AbacatePay
-  const { success, data: subData, error } = await getSubscriptionData(store.id)
-  const { history = [] } = await getSubscriptionHistory(store.id)
+  const { data: subData, error } = await getSubscriptionData(store.id)
+  const { history = [] as AbacateCheckout[] } = await getSubscriptionHistory(store.id)
 
   const isPending = store.subscriptionStatus === 'PENDING'
   const isCanceled = store.subscriptionStatus === 'CANCELED'
   const isActive = store.subscriptionStatus === 'ACTIVE'
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-16">
+    <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-8 pb-16">
       
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-slate-200 pb-6">
@@ -71,10 +71,10 @@ export default async function AssinaturaPage({ params }: { params: Promise<{ slu
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Status Card */}
-        <div className={`col-span-1 lg:col-span-2 rounded-3xl p-8 border ${
-          isActive ? 'bg-emerald-50 border-emerald-100' :
-          isPending ? 'bg-amber-50 border-amber-100' :
-          'bg-rose-50 border-rose-100'
+        <div className={`col-span-1 lg:col-span-2 rounded-3xl p-8 border shadow-sm ${
+          isActive ? 'bg-emerald-50 border-emerald-100 shadow-emerald-100/50' :
+          isPending ? 'bg-amber-50 border-amber-100 shadow-amber-100/50' :
+          'bg-rose-50 border-rose-100 shadow-rose-100/50'
         } relative overflow-hidden`}>
           
           <div className="relative z-10">
@@ -133,7 +133,7 @@ export default async function AssinaturaPage({ params }: { params: Promise<{ slu
         </div>
 
         {/* Action Card */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-8 flex flex-col justify-between">
+        <div className="bg-white border border-slate-200 shadow-sm rounded-3xl p-8 flex flex-col justify-between">
           <div>
             <h3 className="text-xl font-black text-slate-900 mb-3 flex items-center gap-2">
               <ShieldCheck className="w-6 h-6 text-emerald-500" />
@@ -149,7 +149,15 @@ export default async function AssinaturaPage({ params }: { params: Promise<{ slu
               <>
                 <CancelSubscriptionButton storeId={store.id} />
                 <p className="text-xs text-slate-400 font-medium text-center">
-                  Deseja atualizar seu cartão? <a href="#" className="underline hover:text-slate-600">Fale com o suporte.</a>
+                  Deseja atualizar seu cartão?{' '}
+                  <a
+                    href={`https://wa.me/${(process.env.NEXT_PUBLIC_SUPPORT_PHONE ?? '5561995783461').replace(/\D/g, '')}?text=Preciso%20de%20ajuda%20com%20minha%20assinatura`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-slate-600"
+                  >
+                    Fale com o suporte.
+                  </a>
                 </p>
               </>
             )}
@@ -167,7 +175,7 @@ export default async function AssinaturaPage({ params }: { params: Promise<{ slu
       </div>
 
       {/* HISTORY TABLE */}
-      <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden">
+      <div className="bg-white border border-slate-200 shadow-sm rounded-3xl overflow-hidden">
         <div className="p-6 md:p-8 border-b border-slate-100 flex items-center gap-3">
           <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600">
             <Receipt className="w-5 h-5" />
@@ -187,7 +195,7 @@ export default async function AssinaturaPage({ params }: { params: Promise<{ slu
             </thead>
             <tbody className="divide-y divide-slate-100">
               {history.length > 0 ? (
-                history.map((invoice: any) => (
+                history.map((invoice) => (
                   <tr key={invoice.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-8 py-4 font-medium text-slate-700">
                       {new Date(invoice.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}

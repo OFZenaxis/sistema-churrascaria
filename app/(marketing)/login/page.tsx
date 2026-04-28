@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { Flame, ArrowRight, Loader2, XCircle } from 'lucide-react'
 import { findStoreByEmail } from '@/app/actions/auth'
 
@@ -25,13 +26,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
 
         {/* Logo */}
-        <Link href="/" className="flex items-center justify-center gap-2.5 mb-10">
-          <div className="w-9 h-9 bg-rose-600 rounded-xl flex items-center justify-center shadow-md">
-            <Flame className="w-5 h-5 text-white fill-white" strokeWidth={1.5} />
-          </div>
-          <span className="text-slate-900 font-black text-xl tracking-tight">
-            Saiu<span className="text-rose-600">Delivery</span>
-          </span>
+        <Link href="/" className="flex items-center justify-center mb-10">
+          <Image src="/logo-full.png" alt="Saiu Delivery" width={200} height={56} className="h-10 w-auto" priority />
         </Link>
 
         {/* Card */}

@@ -1,6 +1,7 @@
 "use client"
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import {
@@ -17,6 +18,7 @@ import {
   Copy,
   Check,
   Receipt,
+  MessageCircle,
 } from 'lucide-react'
 import { logoutLojista } from '@/app/actions/adminAuth'
 import { useSidebar } from './SidebarContext'
@@ -60,10 +62,11 @@ export default function AdminSidebar({
   ]
 
   const bottomItems = [
-    { href: '/admin/assinatura',               label: 'Assinatura',     icon: Receipt },
-    { href: '/admin/personalizacao',           label: 'Personalização', icon: Palette },
-    { href: '/admin/configuracoes/pagamentos', label: 'Meios de Pag.',  icon: CreditCard },
-    { href: '/admin/configuracoes',            label: 'Configurações',  icon: Settings },
+    { href: '/admin/assinatura',                  label: 'Assinatura',     icon: Receipt },
+    { href: '/admin/personalizacao',              label: 'Personalização', icon: Palette },
+    { href: '/admin/configuracoes/whatsapp',      label: 'WhatsApp',       icon: MessageCircle },
+    { href: '/admin/configuracoes/pagamentos',    label: 'Meios de Pag.',  icon: CreditCard },
+    { href: '/admin/configuracoes',               label: 'Configurações',  icon: Settings },
   ]
 
   const handleLogout = async () => {
@@ -86,10 +89,7 @@ export default function AdminSidebar({
         {isCollapsed ? (
           /* Ícone compacto — sempre logo-icon quando colapsado */
           <div className="flex justify-center">
-            <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-white border border-slate-100">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo-icon.png" alt="Saiu Delivery" className="w-full h-full object-cover" />
-            </div>
+            <Image src="/logo-icon.png" alt="Saiu Delivery" width={32} height={32} className="w-8 h-8 object-contain" />
           </div>
         ) : (
           /* Branding completo */
@@ -102,12 +102,8 @@ export default function AdminSidebar({
                 className="object-contain h-11 w-auto max-w-full"
               />
             ) : (
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-white border border-slate-100">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/logo-icon.png" alt="Saiu Delivery" className="w-full h-full object-cover" />
-                </div>
-                <span className="font-black text-slate-900 text-sm leading-tight truncate">{storeName}</span>
+              <div className="flex items-center">
+                <Image src="/logo-full.png" alt="Saiu Delivery" width={200} height={56} className="h-8 w-auto object-contain" />
               </div>
             )}
             <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest mt-2">Painel Admin</p>
