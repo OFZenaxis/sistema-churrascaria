@@ -108,8 +108,22 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
     return { success: false as const, error: 'Erro de rede ao buscar QR Code. Tente novamente.' }
   }
 
-  const connectData = await connectRes.json() as { base64?: string; code?: string }
-  const qrCodeBase64 = connectData.base64 ?? null
+  // Loga o corpo bruto para diagnóstico — campos variam entre versões da Evolution API
+  const connectData = await connectRes.json() as Record<string, unknown>
+  logger.info(
+    { module: 'whatsapp', storeId, instanceName, connectStatus: connectRes.status, connectBody: connectData },
+    'GET /instance/connect — resposta bruta'
+  )
+
+  // Evolution API v2 pode retornar base64 em estruturas diferentes conforme versão e estado da instância:
+  //   { base64: "data:image/png;base64,..." }           — resposta direta
+  //   { qrcode: { base64: "..." } }                    — aninhado em qrcode
+  //   { qrcode: { base64Image: "..." } }               — variante antiga
+  const qrCodeBase64 =
+    (connectData.base64 as string | undefined) ??
+    ((connectData.qrcode as { base64?: string; base64Image?: string } | undefined)?.base64) ??
+    ((connectData.qrcode as { base64?: string; base64Image?: string } | undefined)?.base64Image) ??
+    null
 
   logger.info(
     { module: 'whatsapp', storeId, instanceName, qrPresent: !!qrCodeBase64, usedFallback: true },
