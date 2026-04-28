@@ -105,26 +105,53 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
     return { success: true as const, qrCodeBase64 }
   }
 
-  // Passo 5: QR ausente no 201 (race condition raro do Baileys)
-  // GET /instance/connect retorna { "count": 0 } nesta versão — não serve para QR
-  // Logamos diagnóstico e retornamos erro informativo para o usuário tentar novamente
+  // Passo 5: QR ausente no 201 — Baileys ainda inicializando (race condition)
+  // O estado "connecting" aparece ~3s após o POST. O QR é gerado assincronamente
+  // e fica disponível em GET /instance/connect assim que o Baileys estiver pronto.
+  // Fazemos polling com até 6 tentativas (18s no total) para capturar o QR.
   logger.warn(
     { module: 'whatsapp', storeId, instanceName },
-    'QR vazio no 201 (race condition Baileys) — aguardando 3s para diagnóstico'
+    'QR vazio no 201 — iniciando polling em GET /instance/connect (até 6 tentativas, 3s cada)'
   )
-  await new Promise(r => setTimeout(r, 3000))
 
-  const diagRes = await fetch(`${apiUrl}/instance/connectionState/${instanceName}`, {
-    headers: { apikey: apiKey },
-    cache: 'no-store',
-  }).catch(() => null)
-  const diagData = diagRes ? await diagRes.json().catch(() => null) : null
+  const MAX_ATTEMPTS = 6
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    await new Promise(r => setTimeout(r, 3000))
+
+    try {
+      const pollRes = await fetch(`${apiUrl}/instance/connect/${instanceName}`, {
+        headers: { apikey: apiKey },
+        cache: 'no-store',
+      })
+      const pollData = await pollRes.json() as Record<string, unknown>
+
+      const polledQr =
+        (pollData.base64 as string | undefined) ??
+        ((pollData.qrcode as { base64?: string } | undefined)?.base64) ??
+        null
+
+      logger.info(
+        { module: 'whatsapp', storeId, instanceName, attempt, qrPresent: !!polledQr, pollBody: pollData },
+        `Polling GET /instance/connect — tentativa ${attempt}/${MAX_ATTEMPTS}`
+      )
+
+      if (polledQr) {
+        await prisma.store.update({
+          where: { id: storeId },
+          data: { whatsappInstance: instanceName, whatsappConnected: false },
+        })
+        return { success: true as const, qrCodeBase64: polledQr }
+      }
+    } catch (err) {
+      logger.warn({ module: 'whatsapp', storeId, instanceName, attempt, err }, 'Erro de rede no polling — tentando novamente')
+    }
+  }
 
   logger.error(
-    { module: 'whatsapp', storeId, instanceName, instanceState: diagData },
-    'QR code ausente no 201 — estado da instância logado para diagnóstico'
+    { module: 'whatsapp', storeId, instanceName },
+    `QR code ausente após ${MAX_ATTEMPTS} tentativas de polling`
   )
-  return { success: false as const, error: 'QR Code não foi gerado a tempo. Aguarde alguns segundos e tente novamente.' }
+  return { success: false as const, error: 'QR Code não foi gerado a tempo. Tente novamente.' }
 }
 
 /**
