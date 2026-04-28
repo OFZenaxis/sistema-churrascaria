@@ -89,10 +89,10 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
     return { success: false as const, error: createData.message ?? 'Erro ao criar instância na Evolution API.' }
   }
 
-  // Passo 4: Extrai QR do corpo 201
+  // Passo 4: Extrai QR do corpo 201 — loga corpo completo para diagnóstico
   const qrCodeBase64 = createData.qrcode?.base64 ?? createData.base64 ?? null
   logger.info(
-    { module: 'whatsapp', storeId, instanceName, qrPresent: !!qrCodeBase64 },
+    { module: 'whatsapp', storeId, instanceName, qrPresent: !!qrCodeBase64, createBody: createData },
     'POST /instance/create → 201'
   )
 
