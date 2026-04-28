@@ -35,7 +35,7 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
       method: 'DELETE',
       headers: { apikey: apiKey },
     })
-    console.log(`[whatsapp] DELETE instância "${instanceName}" enviado`)
+    logger.info({ module: 'whatsapp', storeId, instanceName }, 'DELETE instância enviado')
   } catch {
     // Instância pode não existir — prossegue
   }
@@ -81,11 +81,17 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
 
     // Tenta extrair QR da resposta do create (nem sempre presente — race condition do Baileys)
     let qrCodeBase64 = data.qrcode?.base64 ?? data.base64 ?? null
-    console.log(`[whatsapp] POST /instance/create → qrCodeBase64 presente: ${!!qrCodeBase64}`)
+    logger.info(
+      { module: 'whatsapp', storeId, confirmedName, qrPresent: !!qrCodeBase64 },
+      'POST /instance/create concluído'
+    )
 
     // Passo 4-6: Fallback — aguarda e busca QR via GET /instance/connect/{name}
     if (!qrCodeBase64) {
-      console.log(`[whatsapp] QR ausente no create. Aguardando 2.5s e tentando GET /instance/connect/${confirmedName}`)
+      logger.warn(
+        { module: 'whatsapp', storeId, confirmedName },
+        'QR ausente no create — aguardando 2.5s e tentando GET /instance/connect'
+      )
       await new Promise(r => setTimeout(r, 2500))
 
       try {
@@ -95,9 +101,12 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
         })
         const connectData = await connectRes.json() as { base64?: string; code?: string }
         qrCodeBase64 = connectData.base64 ?? null
-        console.log(`[whatsapp] GET /instance/connect → qrCodeBase64 presente: ${!!qrCodeBase64}`)
+        logger.info(
+          { module: 'whatsapp', storeId, confirmedName, qrPresent: !!qrCodeBase64 },
+          'GET /instance/connect concluído'
+        )
       } catch (err) {
-        console.log(`[whatsapp] Erro no GET /instance/connect:`, err)
+        logger.error({ module: 'whatsapp', storeId, confirmedName, err }, 'Erro no GET /instance/connect')
       }
     }
 

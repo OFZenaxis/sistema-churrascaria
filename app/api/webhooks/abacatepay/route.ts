@@ -24,28 +24,39 @@ export function verifyAbacateSignature(rawBody: string, signatureFromHeader: str
 }
 
 export async function POST(req: NextRequest) {
+  // requestId permite rastrear todo o ciclo de vida de um webhook nos logs
+  const requestId = crypto.randomUUID();
+
   try {
+    logger.info(
+      { module: 'webhook-abacatepay', requestId, ip: req.headers.get('x-forwarded-for') ?? 'unknown' },
+      'Webhook recebido'
+    );
+
     // 1. Validação do Webhook Secret na Query String
     const receivedSecret = req.nextUrl.searchParams.get('webhookSecret');
     const expectedSecret = process.env.ABACATEPAY_WEBHOOK_SECRET;
 
     if (!expectedSecret) {
-      logger.error('webhook-abacatepay', 'ABACATEPAY_WEBHOOK_SECRET não configurada');
+      logger.error({ module: 'webhook-abacatepay', requestId }, 'ABACATEPAY_WEBHOOK_SECRET não configurada');
       return NextResponse.json({ error: 'Configuração inválida no servidor' }, { status: 500 });
     }
 
     if (receivedSecret !== expectedSecret) {
+      logger.warn({ module: 'webhook-abacatepay', requestId }, 'Rejeitado: webhookSecret inválido');
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
     // 2. Validação da Assinatura HMAC no Cabeçalho
     const signature = req.headers.get('x-webhook-signature');
     if (!signature) {
+      logger.warn({ module: 'webhook-abacatepay', requestId }, 'Rejeitado: header x-webhook-signature ausente');
       return NextResponse.json({ error: 'Assinatura ausente' }, { status: 401 });
     }
 
     const rawBody = await req.text();
     if (!verifyAbacateSignature(rawBody, signature)) {
+      logger.warn({ module: 'webhook-abacatepay', requestId }, 'Rejeitado: assinatura HMAC inválida');
       return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 });
     }
 
@@ -55,8 +66,14 @@ export async function POST(req: NextRequest) {
     const data = payload.data as Record<string, unknown> | undefined;
 
     if (!event || !data) {
+      logger.warn({ module: 'webhook-abacatepay', requestId }, 'Payload malformado');
       return NextResponse.json({ error: 'Payload malformado' }, { status: 400 });
     }
+
+    logger.info(
+      { module: 'webhook-abacatepay', requestId, event },
+      'Assinatura validada — processando evento'
+    );
 
     // Extrai storeId do metadata injetado durante a criação do checkout
     let storeId: string | null = null;
@@ -75,7 +92,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!storeId) {
-      logger.warn('webhook-abacatepay', `Evento "${event}" recebido sem storeId no metadata`);
+      logger.warn({ module: 'webhook-abacatepay', requestId, event }, 'Evento recebido sem storeId no metadata');
       return NextResponse.json({ success: true, warning: 'Sem storeId associado' });
     }
 
@@ -104,9 +121,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    logger.info(
+      { module: 'webhook-abacatepay', requestId, event, storeId },
+      'Evento processado com sucesso'
+    );
     return NextResponse.json({ success: true });
   } catch (error) {
-    logger.error('webhook-abacatepay', 'Erro no processamento do webhook', error);
+    logger.error({ module: 'webhook-abacatepay', requestId, err: error }, 'Erro no processamento do webhook');
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
