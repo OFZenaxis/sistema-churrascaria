@@ -13,9 +13,13 @@ function getEvolutionConfig(): { apiUrl: string; apiKey: string } | null {
 }
 
 /**
- * Cria (ou recria) a instância WhatsApp na Evolution API e retorna o QR code em base64.
- * Aplica fluxo de resgate com retry para compensar a race condition do Baileys:
- * o POST /instance/create pode responder antes do QR estar disponível.
+ * Gera o QR Code de conexão WhatsApp via Evolution API v2.
+ *
+ * Fluxo:
+ *  1. POST /instance/create
+ *  2. 403 ou "already exists" → instância já existe, vai direto ao fallback
+ *  3. POST bem-sucedido com QR na resposta → retorna imediatamente (caminho feliz)
+ *  4. Fallback (403 capturado OU QR vazio): aguarda 2s e faz GET /instance/connect
  */
 export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   const session = await requireAdminSession(storeId)
@@ -29,33 +33,15 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   const { apiUrl, apiKey } = config
   const instanceName = `loja-${slug}`
 
-  // Passo 1: Força delete da instância anterior (best-effort, ignora erro)
-  try {
-    await fetch(`${apiUrl}/instance/delete/${instanceName}`, {
-      method: 'DELETE',
-      headers: { apikey: apiKey },
-    })
-    logger.info({ module: 'whatsapp', storeId, instanceName }, 'DELETE instância enviado')
-  } catch {
-    // Instância pode não existir — prossegue
-  }
+  // Indica se o caminho normal falhou e o fallback será necessário
+  let needsFallback = false
 
-  // Passo 2: Aguarda Baileys liberar o slot
-  await new Promise(r => setTimeout(r, 1000))
-
+  // Passo 1: Tenta criar a instância
   try {
-    // Passo 3: Cria nova instância
     const res = await fetch(`${apiUrl}/instance/create`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: apiKey,
-      },
-      body: JSON.stringify({
-        instanceName,
-        qrcode: true,
-        integration: 'WHATSAPP-BAILEYS',
-      }),
+      headers: { 'Content-Type': 'application/json', apikey: apiKey },
+      body: JSON.stringify({ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
       cache: 'no-store',
     })
 
@@ -64,62 +50,102 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
       qrcode?: { base64?: string }
       base64?: string
       message?: string
+      error?: string
     }
 
-    if (!res.ok) {
-      logger.error('whatsapp', `Erro ao criar instância "${instanceName}": ${data.message ?? res.status}`)
+    // Passo 2: 403 ou mensagem de "já existe" → instância existente, não é erro fatal
+    const alreadyExists =
+      res.status === 403 ||
+      data.message?.toLowerCase().includes('already') ||
+      data.error?.toLowerCase().includes('already')
+
+    if (alreadyExists) {
+      logger.warn(
+        { module: 'whatsapp', storeId, instanceName, httpStatus: res.status, apiMessage: data.message },
+        'Instância já existe na Evolution API — redirecionando para fallback'
+      )
+      needsFallback = true
+    } else if (!res.ok) {
+      // Erro real (não 403) — falha definitiva
+      logger.error(
+        { module: 'whatsapp', storeId, instanceName, httpStatus: res.status, apiMessage: data.message },
+        'Erro fatal ao criar instância na Evolution API'
+      )
       return { success: false as const, error: data.message ?? 'Erro ao criar instância na Evolution API.' }
-    }
+    } else {
+      // Passo 3: POST bem-sucedido — persiste e tenta retornar QR imediatamente
+      const confirmedName = data.instance?.instanceName ?? instanceName
+      await prisma.store.update({
+        where: { id: storeId },
+        data: { whatsappInstance: confirmedName, whatsappConnected: false },
+      })
 
-    // Usa o nome confirmado pela API (pode diferir do enviado em casos de sanitização)
-    const confirmedName = data.instance?.instanceName ?? instanceName
+      const qrCodeBase64 = data.qrcode?.base64 ?? data.base64 ?? null
+      logger.info(
+        { module: 'whatsapp', storeId, confirmedName, qrPresent: !!qrCodeBase64, usedFallback: false },
+        'POST /instance/create concluído'
+      )
 
-    await prisma.store.update({
-      where: { id: storeId },
-      data: { whatsappInstance: confirmedName, whatsappConnected: false },
-    })
+      if (qrCodeBase64) {
+        return { success: true as const, qrCodeBase64 }
+      }
 
-    // Tenta extrair QR da resposta do create (nem sempre presente — race condition do Baileys)
-    let qrCodeBase64 = data.qrcode?.base64 ?? data.base64 ?? null
-    logger.info(
-      { module: 'whatsapp', storeId, confirmedName, qrPresent: !!qrCodeBase64 },
-      'POST /instance/create concluído'
-    )
-
-    // Passo 4-6: Fallback — aguarda e busca QR via GET /instance/connect/{name}
-    if (!qrCodeBase64) {
+      // QR veio vazio no create (race condition Baileys) → usa fallback
       logger.warn(
         { module: 'whatsapp', storeId, confirmedName },
-        'QR ausente no create — aguardando 2.5s e tentando GET /instance/connect'
+        'QR vazio no create — redirecionando para fallback'
       )
-      await new Promise(r => setTimeout(r, 2500))
-
-      try {
-        const connectRes = await fetch(`${apiUrl}/instance/connect/${confirmedName}`, {
-          headers: { apikey: apiKey },
-          cache: 'no-store',
-        })
-        const connectData = await connectRes.json() as { base64?: string; code?: string }
-        qrCodeBase64 = connectData.base64 ?? null
-        logger.info(
-          { module: 'whatsapp', storeId, confirmedName, qrPresent: !!qrCodeBase64 },
-          'GET /instance/connect concluído'
-        )
-      } catch (err) {
-        logger.error({ module: 'whatsapp', storeId, confirmedName, err }, 'Erro no GET /instance/connect')
-      }
+      needsFallback = true
     }
-
-    if (!qrCodeBase64) {
-      logger.error('whatsapp', `Instância "${confirmedName}" criada mas QR code ausente após retry`)
-      return { success: false as const, error: 'Instância criada, mas QR Code não foi retornado. Tente novamente.' }
-    }
-
-    return { success: true as const, qrCodeBase64 }
   } catch (err) {
-    logger.error('whatsapp', 'generateWhatsAppQRCode: erro de rede com a Evolution API', err)
+    logger.error({ module: 'whatsapp', storeId, instanceName, err }, 'Erro de rede no POST /instance/create')
     return { success: false as const, error: 'Erro de rede ao conectar com o servidor de WhatsApp.' }
   }
+
+  // Passo 4: Fallback — aguarda 2s para o Baileys gerar o QR e busca via GET
+  if (needsFallback) {
+    logger.info(
+      { module: 'whatsapp', storeId, instanceName },
+      'Iniciando fallback: aguardando 2s antes do GET /instance/connect'
+    )
+    await new Promise(r => setTimeout(r, 2000))
+
+    try {
+      const connectRes = await fetch(`${apiUrl}/instance/connect/${instanceName}`, {
+        headers: { apikey: apiKey },
+        cache: 'no-store',
+      })
+      const connectData = await connectRes.json() as { base64?: string; code?: string }
+      const qrCodeBase64 = connectData.base64 ?? null
+
+      logger.info(
+        { module: 'whatsapp', storeId, instanceName, qrPresent: !!qrCodeBase64, usedFallback: true },
+        'GET /instance/connect concluído'
+      )
+
+      if (!qrCodeBase64) {
+        logger.error(
+          { module: 'whatsapp', storeId, instanceName },
+          'QR code ausente mesmo após fallback GET /instance/connect'
+        )
+        return { success: false as const, error: 'QR Code não disponível. Aguarde alguns segundos e tente novamente.' }
+      }
+
+      // Garante que o instanceName está salvo no banco (necessário para o caminho 403)
+      await prisma.store.update({
+        where: { id: storeId },
+        data: { whatsappInstance: instanceName, whatsappConnected: false },
+      })
+
+      return { success: true as const, qrCodeBase64 }
+    } catch (err) {
+      logger.error({ module: 'whatsapp', storeId, instanceName, err }, 'Erro de rede no GET /instance/connect')
+      return { success: false as const, error: 'Erro de rede ao buscar QR Code. Tente novamente.' }
+    }
+  }
+
+  // Nunca deve chegar aqui — needsFallback garante cobertura total
+  return { success: false as const, error: 'Estado inesperado. Tente novamente.' }
 }
 
 /**
