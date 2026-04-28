@@ -61,7 +61,7 @@ export default function WhatsAppConnectClient({
       return
     }
 
-    setQrBase64(result.base64)
+    setQrBase64(result.qrCodeBase64)
     setStatus('qr')
   }
 

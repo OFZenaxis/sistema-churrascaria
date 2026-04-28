@@ -14,7 +14,8 @@ function getEvolutionConfig(): { apiUrl: string; apiKey: string } | null {
 
 /**
  * Cria (ou recria) a instância WhatsApp na Evolution API e retorna o QR code em base64.
- * Se a loja já possuía uma instância anterior, ela é removida antes da criação.
+ * Aplica fluxo de resgate com retry para compensar a race condition do Baileys:
+ * o POST /instance/create pode responder antes do QR estar disponível.
  */
 export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   const session = await requireAdminSession(storeId)
@@ -28,24 +29,22 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   const { apiUrl, apiKey } = config
   const instanceName = `loja-${slug}`
 
-  // Se já existia uma instância, remove antes de recriar para garantir QR fresco
-  const existing = await prisma.store.findUnique({
-    where: { id: storeId },
-    select: { whatsappInstance: true },
-  })
-
-  if (existing?.whatsappInstance) {
-    try {
-      await fetch(`${apiUrl}/instance/delete/${existing.whatsappInstance}`, {
-        method: 'DELETE',
-        headers: { apikey: apiKey },
-      })
-    } catch {
-      // Remoção best-effort — falha ignorada, instância pode não existir mais na API
-    }
+  // Passo 1: Força delete da instância anterior (best-effort, ignora erro)
+  try {
+    await fetch(`${apiUrl}/instance/delete/${instanceName}`, {
+      method: 'DELETE',
+      headers: { apikey: apiKey },
+    })
+    console.log(`[whatsapp] DELETE instância "${instanceName}" enviado`)
+  } catch {
+    // Instância pode não existir — prossegue
   }
 
+  // Passo 2: Aguarda Baileys liberar o slot
+  await new Promise(r => setTimeout(r, 1000))
+
   try {
+    // Passo 3: Cria nova instância
     const res = await fetch(`${apiUrl}/instance/create`, {
       method: 'POST',
       headers: {
@@ -63,6 +62,7 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
     const data = await res.json() as {
       instance?: { instanceName?: string }
       qrcode?: { base64?: string }
+      base64?: string
       message?: string
     }
 
@@ -79,14 +79,34 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
       data: { whatsappInstance: confirmedName, whatsappConnected: false },
     })
 
-    const base64 = data.qrcode?.base64
-    if (!base64) {
-      logger.error('whatsapp', `Instância "${confirmedName}" criada mas QR code ausente na resposta`)
+    // Tenta extrair QR da resposta do create (nem sempre presente — race condition do Baileys)
+    let qrCodeBase64 = data.qrcode?.base64 ?? data.base64 ?? null
+    console.log(`[whatsapp] POST /instance/create → qrCodeBase64 presente: ${!!qrCodeBase64}`)
+
+    // Passo 4-6: Fallback — aguarda e busca QR via GET /instance/connect/{name}
+    if (!qrCodeBase64) {
+      console.log(`[whatsapp] QR ausente no create. Aguardando 2.5s e tentando GET /instance/connect/${confirmedName}`)
+      await new Promise(r => setTimeout(r, 2500))
+
+      try {
+        const connectRes = await fetch(`${apiUrl}/instance/connect/${confirmedName}`, {
+          headers: { apikey: apiKey },
+          cache: 'no-store',
+        })
+        const connectData = await connectRes.json() as { base64?: string; code?: string }
+        qrCodeBase64 = connectData.base64 ?? null
+        console.log(`[whatsapp] GET /instance/connect → qrCodeBase64 presente: ${!!qrCodeBase64}`)
+      } catch (err) {
+        console.log(`[whatsapp] Erro no GET /instance/connect:`, err)
+      }
+    }
+
+    if (!qrCodeBase64) {
+      logger.error('whatsapp', `Instância "${confirmedName}" criada mas QR code ausente após retry`)
       return { success: false as const, error: 'Instância criada, mas QR Code não foi retornado. Tente novamente.' }
     }
 
-    // A Evolution API já retorna o prefixo "data:image/png;base64," — repassamos direto
-    return { success: true as const, base64 }
+    return { success: true as const, qrCodeBase64 }
   } catch (err) {
     logger.error('whatsapp', 'generateWhatsAppQRCode: erro de rede com a Evolution API', err)
     return { success: false as const, error: 'Erro de rede ao conectar com o servidor de WhatsApp.' }
