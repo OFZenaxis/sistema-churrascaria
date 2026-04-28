@@ -3,16 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 
-// Fail-fast: chave HMAC obrigatória — sem ela qualquer payload forjado passaria a validação
-if (!process.env.ABACATEPAY_HMAC_KEY) {
-  throw new Error(
-    '[FATAL] ABACATEPAY_HMAC_KEY não definida — assinaturas de webhook AbacatePay não podem ser verificadas.'
-  );
-}
-
 function getHmacKey(): string {
-  // Garantido pelo boot guard acima — cast seguro
-  return process.env.ABACATEPAY_HMAC_KEY as string;
+  if (!process.env.ABACATEPAY_HMAC_KEY) {
+    throw new Error(
+      '[FATAL] ABACATEPAY_HMAC_KEY não definida — assinaturas de webhook AbacatePay não podem ser verificadas.'
+    );
+  }
+  return process.env.ABACATEPAY_HMAC_KEY;
 }
 
 export function verifyAbacateSignature(rawBody: string, signatureFromHeader: string): boolean {
