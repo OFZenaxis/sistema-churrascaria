@@ -46,6 +46,7 @@ model Store {
   // WhatsApp (Evolution API)
   whatsappInstance  String? @unique // Nome da instância na Evolution API (ex: "loja-minha-churrascaria")
   whatsappConnected Boolean @default(false)
+  whatsappQrCode    String? // QR temporário aguardando leitura — apagado após conexão
 
   // Configurações de Entrega por GPS
   storeAddress      String? // Endereço completo para geocodificação

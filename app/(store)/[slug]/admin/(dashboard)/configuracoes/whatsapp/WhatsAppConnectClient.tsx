@@ -2,10 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Image from 'next/image'
-import { generateWhatsAppQRCode, checkWhatsAppConnection, disconnectWhatsApp } from '@/app/actions/whatsapp'
+import {
+  generateWhatsAppQRCode,
+  getWhatsAppQrCode,
+  checkWhatsAppConnection,
+  disconnectWhatsApp,
+} from '@/app/actions/whatsapp'
 import { Loader2, Wifi, WifiOff, RefreshCw, ShieldCheck } from 'lucide-react'
 
-type Status = 'idle' | 'loading' | 'qr' | 'connected' | 'disconnecting'
+type Status = 'idle' | 'loading' | 'pending' | 'qr' | 'connected' | 'disconnecting'
 
 const POLL_INTERVAL_MS = 3_000
 
@@ -32,8 +37,8 @@ export default function WhatsAppConnectClient({
     }
   }, [])
 
-  // Polling: verifica conexão a cada 3s enquanto o QR estiver na tela
-  const startPolling = useCallback(() => {
+  // Polling em 'qr': verifica se a conexão foi estabelecida
+  const startConnectionPolling = useCallback(() => {
     stopPolling()
     intervalRef.current = setInterval(async () => {
       const { connected } = await checkWhatsAppConnection(storeId)
@@ -44,10 +49,24 @@ export default function WhatsAppConnectClient({
     }, POLL_INTERVAL_MS)
   }, [storeId, stopPolling])
 
+  // Polling em 'pending': aguarda o webhook QRCODE_UPDATED salvar o QR no banco
+  const startQrPolling = useCallback(() => {
+    stopPolling()
+    intervalRef.current = setInterval(async () => {
+      const { qrCodeBase64 } = await getWhatsAppQrCode(storeId)
+      if (qrCodeBase64) {
+        stopPolling()
+        setQrBase64(qrCodeBase64)
+        setStatus('qr')
+      }
+    }, POLL_INTERVAL_MS)
+  }, [storeId, stopPolling])
+
   useEffect(() => {
-    if (status === 'qr') startPolling()
+    if (status === 'qr') startConnectionPolling()
+    else if (status === 'pending') startQrPolling()
     return stopPolling
-  }, [status, startPolling, stopPolling])
+  }, [status, startConnectionPolling, startQrPolling, stopPolling])
 
   async function handleGenerate() {
     setStatus('loading')
@@ -61,8 +80,13 @@ export default function WhatsAppConnectClient({
       return
     }
 
-    setQrBase64(result.qrCodeBase64)
-    setStatus('qr')
+    if (result.qrCodeBase64) {
+      setQrBase64(result.qrCodeBase64)
+      setStatus('qr')
+    } else {
+      // QR chegará via webhook QRCODE_UPDATED — entrar em modo polling
+      setStatus('pending')
+    }
   }
 
   async function handleDisconnect() {
@@ -116,10 +140,33 @@ export default function WhatsAppConnectClient({
     )
   }
 
+  // ── Estado: aguardando QR via webhook ─────────────────────────────────────
+  if (status === 'pending') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-start gap-4 bg-slate-50 border border-slate-100 rounded-2xl p-6">
+          <div className="w-10 h-10 bg-slate-200 rounded-xl flex items-center justify-center shrink-0">
+            <Loader2 className="w-5 h-5 text-slate-500 animate-spin" />
+          </div>
+          <div>
+            <p className="text-sm font-black text-slate-700">Gerando QR Code...</p>
+            <p className="text-xs font-medium text-slate-500 mt-0.5">
+              Aguardando a Evolution API gerar o código. Isso leva alguns segundos.
+            </p>
+          </div>
+        </div>
+
+        {error && (
+          <p className="text-sm font-bold text-rose-500 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">
+            {error}
+          </p>
+        )}
+      </div>
+    )
+  }
+
   // ── Estado: QR Code exibido ───────────────────────────────────────────────
   if (status === 'qr') {
-    // A Evolution API retorna "data:image/png;base64,..." — Image exige src absoluta ou relativa
-    // unoptimized permite data URIs sem passar pelo optimizer do Next.js
     const imgSrc = qrBase64.startsWith('data:') ? qrBase64 : `data:image/png;base64,${qrBase64}`
 
     return (
