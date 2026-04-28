@@ -80,12 +80,32 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
     await new Promise(r => setTimeout(r, 2000))
 
   } else if (createRes.status === 403) {
-    // Instância já existe — não é erro, apenas aguarda 1s e vai ao resgate
+    // Instância já existe e pode estar conectada ao WhatsApp (GET /connect retorna { count: 0 }).
+    // Uma instância conectada não gera QR — é preciso fazer logout primeiro para desparear.
+    // DELETE /instance/logout mantém a instância no Evolution API mas remove a sessão do WhatsApp,
+    // fazendo o Baileys entrar em modo "connecting" e gerar um novo QR.
     logger.warn(
       { module: 'whatsapp', storeId, instanceName, apiMessage: createData.message },
-      'POST /instance/create → 403 (instância já existe) — aguardando 1s antes do resgate'
+      'POST /instance/create → 403 — chamando logout para forçar novo QR'
     )
-    await new Promise(r => setTimeout(r, 1000))
+
+    try {
+      const logoutRes = await fetch(`${apiUrl}/instance/logout/${instanceName}`, {
+        method: 'DELETE',
+        headers: { apikey: apiKey },
+        cache: 'no-store',
+      })
+      logger.info(
+        { module: 'whatsapp', storeId, instanceName, logoutStatus: logoutRes.status },
+        'DELETE /instance/logout concluído'
+      )
+    } catch (err) {
+      // Best-effort: se o logout falhar, tenta o connect mesmo assim
+      logger.warn({ module: 'whatsapp', storeId, instanceName, err }, 'Erro no DELETE /instance/logout — prosseguindo')
+    }
+
+    // Aguarda o Baileys processar o logout e preparar o novo QR
+    await new Promise(r => setTimeout(r, 2000))
 
   } else {
     // Qualquer outro status é erro definitivo
