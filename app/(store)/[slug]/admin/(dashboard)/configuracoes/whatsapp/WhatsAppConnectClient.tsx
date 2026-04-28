@@ -83,7 +83,7 @@ export default function WhatsAppConnectClient({
   }
 
   // ── Estado: conectado ──────────────────────────────────────────────────────
-  if (status === 'connected') {
+  if (status === 'connected' || status === 'disconnecting') {
     return (
       <div className="space-y-6">
         <div className="flex items-start gap-4 bg-emerald-50 border border-emerald-100 rounded-2xl p-6">
