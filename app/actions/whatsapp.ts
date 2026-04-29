@@ -63,7 +63,7 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
     data: { whatsappQrCode: null },
   })
 
-  // Passo 4: POST /instance/create com webhook configurado
+  // Passo 4: POST /instance/create — sem webhook inline (configurado separadamente)
   let createRes: Response
   try {
     createRes = await fetch(`${apiUrl}/instance/create`, {
@@ -73,12 +73,6 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
         instanceName,
         qrcode: true,
         integration: 'WHATSAPP-BAILEYS',
-        webhook: {
-          url: webhookUrl,
-          byEvents: true,
-          base64: true,
-          events: ['QRCODE_UPDATED', 'CONNECTION_UPDATE'],
-        },
       }),
       cache: 'no-store',
     })
@@ -102,17 +96,44 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
     return { success: false as const, error: createData.message ?? 'Erro ao criar instância na Evolution API.' }
   }
 
+  const finalInstanceName = createData.instance?.instanceName ?? instanceName
+
   // Salva nome da instância; QR chegará via webhook QRCODE_UPDATED
   await prisma.store.update({
     where: { id: storeId },
-    data: { whatsappInstance: createData.instance?.instanceName ?? instanceName, whatsappConnected: false },
+    data: { whatsappInstance: finalInstanceName, whatsappConnected: false },
   })
 
-  // Verifica se o QR veio sincronamente (improvável mas possível em algumas versões)
+  // Passo 5: Configura webhook via endpoint dedicado (campo correto: webhook_by_events, enabled obrigatório)
+  // A apikey é embutida na query string — Evolution API não envia header de auth nos webhooks de saída
+  const webhookUrlWithAuth = `${webhookUrl}?apikey=${encodeURIComponent(apiKey)}`
+  try {
+    const webhookRes = await fetch(`${apiUrl}/webhook/set/${finalInstanceName}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: apiKey },
+      body: JSON.stringify({
+        enabled: true,
+        url: webhookUrlWithAuth,
+        webhook_by_events: false,
+        webhook_base64: true,
+        events: ['QRCODE_UPDATED', 'CONNECTION_UPDATE'],
+      }),
+      cache: 'no-store',
+    })
+    const webhookData = await webhookRes.json() as Record<string, unknown>
+    logger.info(
+      { module: 'whatsapp', storeId, instanceName: finalInstanceName, webhookStatus: webhookRes.status, webhookData },
+      'POST /webhook/set concluído'
+    )
+  } catch (err) {
+    logger.warn({ module: 'whatsapp', storeId, instanceName: finalInstanceName, err }, 'Erro ao configurar webhook — QRCODE_UPDATED pode não chegar')
+  }
+
+  // Verifica se o QR veio sincronamente (raro)
   const syncQr = createData.qrcode?.base64 ?? createData.base64 ?? null
 
   logger.info(
-    { module: 'whatsapp', storeId, instanceName, webhookUrl, syncQrPresent: !!syncQr },
+    { module: 'whatsapp', storeId, instanceName: finalInstanceName, syncQrPresent: !!syncQr },
     'POST /instance/create → 201 — aguardando QRCODE_UPDATED via webhook'
   )
 
@@ -123,7 +144,6 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
     })
   }
 
-  // Retorna qrCodeBase64 null quando aguardando webhook (pending)
   return { success: true as const, qrCodeBase64: syncQr }
 }
 

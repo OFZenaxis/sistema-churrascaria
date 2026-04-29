@@ -7,9 +7,12 @@ export async function POST(req: NextRequest) {
   const requestId = crypto.randomUUID()
 
   try {
-    const apiKey = req.headers.get('apikey')
-    if (!apiKey || apiKey !== process.env.EVOLUTION_API_KEY) {
-      logger.warn({ module: 'webhook-evolution', requestId }, 'Rejeitado: apikey inválida ou ausente')
+    // Aceita apikey via query string (embutida pela action) ou header (fallback)
+    const apiKeyFromQuery = req.nextUrl.searchParams.get('apikey')
+    const apiKeyFromHeader = req.headers.get('apikey')
+    const receivedKey = apiKeyFromQuery ?? apiKeyFromHeader
+    if (!receivedKey || receivedKey !== process.env.EVOLUTION_API_KEY) {
+      logger.warn({ module: 'webhook-evolution', requestId, hasQuery: !!apiKeyFromQuery, hasHeader: !!apiKeyFromHeader }, 'Rejeitado: apikey inválida ou ausente')
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
