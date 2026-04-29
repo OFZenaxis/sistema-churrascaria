@@ -16,86 +16,88 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   const session = await requireAdminSession(storeId)
   if (!session) return { success: false as const, error: 'Não autorizado' }
 
+  const config = getEvolutionConfig()
+  if (!config) return { success: false as const, error: 'Evolution API não configurada no servidor.' }
+
+  const { apiUrl, apiKey } = config
+
+  // 1. Limpeza assíncrona (Fire and forget)
   const store = await prisma.store.findUnique({
     where: { id: storeId },
     select: { whatsappInstance: true },
   })
-
-  // 1. Limpeza assíncrona (Fire and forget)
   if (store?.whatsappInstance) {
-    fetch(`${process.env.EVOLUTION_API_URL}/instance/delete/${store.whatsappInstance}`, {
+    fetch(`${apiUrl}/instance/delete/${store.whatsappInstance}`, {
       method: 'DELETE',
-      headers: { 'apikey': process.env.EVOLUTION_API_KEY as string }
+      headers: { apikey: apiKey },
+      cache: 'no-store',
     }).catch(() => {})
   }
 
-  // 2. Gerar nome absolutamente único
+  // 2. Nome absolutamente único — evita session lock do Baileys
   const newInstanceName = `${slug}-${Date.now()}`
+  logger.info({ module: 'whatsapp', storeId, newInstanceName }, 'Criando nova instância')
 
-  // 3. Criar Instância (POST)
-  const createRes = await fetch(`${process.env.EVOLUTION_API_URL}/instance/create`, {
+  // 3. POST /instance/create
+  const createRes = await fetch(`${apiUrl}/instance/create`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': process.env.EVOLUTION_API_KEY as string
-    },
-    body: JSON.stringify({
-      instanceName: newInstanceName,
-      token: newInstanceName,
-      qrcode: true,
-      integration: 'WHATSAPP-BAILEYS'
-    })
+    headers: { 'Content-Type': 'application/json', apikey: apiKey },
+    body: JSON.stringify({ instanceName: newInstanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
+    cache: 'no-store',
   })
 
-  const createData = await createRes.json()
-  logger.info({ module: 'whatsapp', storeId, newInstanceName }, 'POST /instance/create concluído')
-
-  // A V2 às vezes devolve o QR Code direto no create se o server for rápido
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let qrCodeBase64: string | null = (createData as any)?.qrcode?.base64 || (createData as any)?.base64 || null
+  const createData = await createRes.json() as any
+  logger.info(
+    { module: 'whatsapp', storeId, newInstanceName, httpStatus: createRes.status, createData },
+    'POST /instance/create concluído'
+  )
 
-  // 4. Polling de Resgate (Se o QR não veio na criação)
+  if (createRes.status !== 201) {
+    logger.error({ module: 'whatsapp', storeId, newInstanceName, httpStatus: createRes.status }, 'Falha no POST /instance/create')
+    return { success: false as const, error: createData?.message ?? 'Erro ao criar instância.' }
+  }
+
+  // QR síncrono — raro mas possível
+  let qrCodeBase64: string | null = createData?.qrcode?.base64 || createData?.base64 || null
+
+  // 4. Polling — 3s inicial + 15x / 3s = até 48s total
   if (!qrCodeBase64) {
-    // Dá um respiro inicial de 3 segundos para o DB da API salvar a instância
-    await new Promise(resolve => setTimeout(resolve, 3000))
+    await new Promise(r => setTimeout(r, 3000))
 
     for (let i = 1; i <= 15; i++) {
-      logger.info({ module: 'whatsapp', attempt: i, newInstanceName }, 'Tentativa de resgate do QR Code')
-
-      // ATENÇÃO: Método GET e URL exata
-      const pollRes = await fetch(`${process.env.EVOLUTION_API_URL}/instance/connect/${newInstanceName}`, {
+      const pollRes = await fetch(`${apiUrl}/instance/connect/${newInstanceName}`, {
         method: 'GET',
-        headers: {
-          'apikey': process.env.EVOLUTION_API_KEY as string
-        }
+        headers: { apikey: apiKey },
+        cache: 'no-store',
       })
-
-      const pollData = await pollRes.json()
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      qrCodeBase64 = (pollData as any)?.base64 || (pollData as any)?.qrcode?.base64 || (pollData as any)?.instance?.qrcode || null
+      const pollData = await pollRes.json() as any
 
-      if (qrCodeBase64) {
-        break // Achou a imagem, quebra o loop!
-      }
+      logger.info(
+        { module: 'whatsapp', storeId, attempt: i, newInstanceName, pollBody: pollData },
+        'Tentativa de resgate do QR Code'
+      )
 
-      // Aguarda mais 3s antes da próxima tentativa
-      await new Promise(resolve => setTimeout(resolve, 3000))
+      qrCodeBase64 = pollData?.base64 || pollData?.qrcode?.base64 || null
+      if (qrCodeBase64) break
+
+      await new Promise(r => setTimeout(r, 3000))
     }
   }
 
-  // 5. Atualização Final
+  // 5. Resultado final
   if (!qrCodeBase64) {
     logger.error({ module: 'whatsapp', storeId, newInstanceName }, 'Timeout definitivo. QR Code não gerado.')
     return { success: false as const, error: 'Não foi possível gerar o QR Code no momento. Tente novamente.' }
   }
 
-  // Atualiza o banco com o novo instanceName e retorna para o front
   await prisma.store.update({
     where: { id: storeId },
     data: { whatsappInstance: newInstanceName, whatsappConnected: false, whatsappQrCode: null },
   })
 
+  logger.info({ module: 'whatsapp', storeId, newInstanceName }, 'QR Code obtido com sucesso')
   return { success: true as const, qrCodeBase64 }
 }
 
