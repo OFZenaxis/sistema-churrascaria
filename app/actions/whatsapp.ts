@@ -66,7 +66,7 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
     await new Promise(r => setTimeout(r, 15000))
 
     for (let i = 1; i <= 5; i++) {
-      const pollRes = await fetch(`${apiUrl}/instance/connect/${newInstanceName}`, {
+      const pollRes = await fetch(`${apiUrl}/instance/connectionState/${newInstanceName}`, {
         method: 'GET',
         headers: { apikey: apiKey },
         cache: 'no-store',
