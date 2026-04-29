@@ -59,7 +59,7 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
     // Dá um respiro inicial de 3 segundos para o DB da API salvar a instância
     await new Promise(resolve => setTimeout(resolve, 3000))
 
-    for (let i = 1; i <= 4; i++) {
+    for (let i = 1; i <= 15; i++) {
       logger.info({ module: 'whatsapp', attempt: i, newInstanceName }, 'Tentativa de resgate do QR Code')
 
       // ATENÇÃO: Método GET e URL exata
@@ -79,8 +79,8 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
         break // Achou a imagem, quebra o loop!
       }
 
-      // Aguarda mais 2.5s antes da próxima tentativa
-      await new Promise(resolve => setTimeout(resolve, 2500))
+      // Aguarda mais 3s antes da próxima tentativa
+      await new Promise(resolve => setTimeout(resolve, 3000))
     }
   }
 
