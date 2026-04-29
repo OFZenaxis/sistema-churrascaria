@@ -13,18 +13,15 @@ function getEvolutionConfig(): { apiUrl: string; apiKey: string } | null {
 }
 
 /**
- * Inicia a conexão WhatsApp via Evolution API v2.
+ * Gera o QR Code de conexão WhatsApp via Evolution API v2.
  *
  * Fluxo:
  *  1. DELETE /instance/delete  → remove instância existente (best-effort)
  *  2. sleep(5000)              → garante limpeza completa do Baileys
- *  3. Limpa whatsappQrCode anterior no banco
- *  4. POST /instance/create    → cria instância com webhook configurado
- *  5. Evolution API envia QRCODE_UPDATED ao nosso webhook → QR salvo no banco
- *  6. Frontend faz polling em getWhatsAppQrCode() até o QR aparecer
- *
- * O QR nunca está disponível de forma síncrona no 201 — Baileys o gera
- * assincronamente e o entrega via evento QRCODE_UPDATED.
+ *  3. POST /instance/create    → cria instância nova
+ *  4. Polling (4x / 2.5s)     → GET /instance/connect aguarda o Baileys gerar o QR
+ *  5. QR encontrado            → salva Prisma + retorna base64
+ *  6. Esgotado                 → retorna erro de timeout
  */
 export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   const session = await requireAdminSession(storeId)
@@ -37,7 +34,6 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
 
   const { apiUrl, apiKey } = config
   const instanceName = `loja-${slug}`
-  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/evolution`
 
   // Passo 1: DELETE incondicional — remove instância anterior
   try {
@@ -57,23 +53,13 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   // Passo 2: Aguarda limpeza completa do Baileys
   await new Promise(r => setTimeout(r, 5000))
 
-  // Passo 3: Limpa QR code anterior para evitar exibir QR stale
-  await prisma.store.update({
-    where: { id: storeId },
-    data: { whatsappQrCode: null },
-  })
-
-  // Passo 4: POST /instance/create — sem webhook inline (configurado separadamente)
+  // Passo 3: POST /instance/create
   let createRes: Response
   try {
     createRes = await fetch(`${apiUrl}/instance/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: apiKey },
-      body: JSON.stringify({
-        instanceName,
-        qrcode: true,
-        integration: 'WHATSAPP-BAILEYS',
-      }),
+      body: JSON.stringify({ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
       cache: 'no-store',
     })
   } catch (err) {
@@ -83,8 +69,6 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
 
   const createData = await createRes.json() as {
     instance?: { instanceName?: string }
-    qrcode?: { base64?: string }
-    base64?: string
     message?: string
   }
 
@@ -98,53 +82,58 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
 
   const finalInstanceName = createData.instance?.instanceName ?? instanceName
 
-  // Salva nome da instância; QR chegará via webhook QRCODE_UPDATED
   await prisma.store.update({
     where: { id: storeId },
-    data: { whatsappInstance: finalInstanceName, whatsappConnected: false },
+    data: { whatsappInstance: finalInstanceName, whatsappConnected: false, whatsappQrCode: null },
   })
 
-  // Passo 5: Configura webhook via endpoint dedicado (campo correto: webhook_by_events, enabled obrigatório)
-  // A apikey é embutida na query string — Evolution API não envia header de auth nos webhooks de saída
-  const webhookUrlWithAuth = `${webhookUrl}?apikey=${encodeURIComponent(apiKey)}`
-  try {
-    const webhookRes = await fetch(`${apiUrl}/webhook/set/${finalInstanceName}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: apiKey },
-      body: JSON.stringify({
-        enabled: true,
-        url: webhookUrlWithAuth,
-        webhook_by_events: false,
-        webhook_base64: true,
-        events: ['QRCODE_UPDATED', 'CONNECTION_UPDATE'],
-      }),
-      cache: 'no-store',
-    })
-    const webhookData = await webhookRes.json() as Record<string, unknown>
-    logger.info(
-      { module: 'whatsapp', storeId, instanceName: finalInstanceName, webhookStatus: webhookRes.status, webhookData },
-      'POST /webhook/set concluído'
-    )
-  } catch (err) {
-    logger.warn({ module: 'whatsapp', storeId, instanceName: finalInstanceName, err }, 'Erro ao configurar webhook — QRCODE_UPDATED pode não chegar')
-  }
-
-  // Verifica se o QR veio sincronamente (raro)
-  const syncQr = createData.qrcode?.base64 ?? createData.base64 ?? null
-
   logger.info(
-    { module: 'whatsapp', storeId, instanceName: finalInstanceName, syncQrPresent: !!syncQr },
-    'POST /instance/create → 201 — aguardando QRCODE_UPDATED via webhook'
+    { module: 'whatsapp', storeId, instanceName: finalInstanceName },
+    'POST /instance/create → 201 — iniciando polling GET /instance/connect'
   )
 
-  if (syncQr) {
-    await prisma.store.update({
-      where: { id: storeId },
-      data: { whatsappQrCode: syncQr },
-    })
+  // Passo 4: Polling — Baileys gera o QR assincronamente após o POST
+  const MAX_ATTEMPTS = 4
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    await new Promise(r => setTimeout(r, 2500))
+
+    let pollData: Record<string, unknown>
+    try {
+      const pollRes = await fetch(`${apiUrl}/instance/connect/${finalInstanceName}`, {
+        headers: { apikey: apiKey },
+        cache: 'no-store',
+      })
+      pollData = await pollRes.json() as Record<string, unknown>
+    } catch (err) {
+      logger.warn({ module: 'whatsapp', storeId, instanceName: finalInstanceName, attempt: i + 1, err }, 'Erro de rede no polling')
+      continue
+    }
+
+    const qrCodeBase64 = (pollData.base64 as string | undefined) ?? null
+
+    logger.info(
+      { module: 'whatsapp', storeId, instanceName: finalInstanceName, attempt: i + 1, qrPresent: !!qrCodeBase64, pollBody: pollData },
+      `Polling GET /instance/connect — tentativa ${i + 1}/${MAX_ATTEMPTS}`
+    )
+
+    if (qrCodeBase64) {
+      await prisma.store.update({
+        where: { id: storeId },
+        data: { whatsappInstance: finalInstanceName, whatsappConnected: false },
+      })
+      logger.info(
+        { module: 'whatsapp', storeId, instanceName: finalInstanceName, attempt: i + 1 },
+        'QR Code obtido com sucesso'
+      )
+      return { success: true as const, qrCodeBase64 }
+    }
   }
 
-  return { success: true as const, qrCodeBase64: syncQr }
+  logger.error(
+    { module: 'whatsapp', storeId, instanceName: finalInstanceName },
+    `Timeout na geração do QR Code após ${MAX_ATTEMPTS} tentativas`
+  )
+  return { success: false as const, error: 'Timeout na geração do QR Code. Tente novamente.' }
 }
 
 /**

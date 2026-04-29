@@ -2,15 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Image from 'next/image'
-import {
-  generateWhatsAppQRCode,
-  getWhatsAppQrCode,
-  checkWhatsAppConnection,
-  disconnectWhatsApp,
-} from '@/app/actions/whatsapp'
+import { generateWhatsAppQRCode, checkWhatsAppConnection, disconnectWhatsApp } from '@/app/actions/whatsapp'
 import { Loader2, Wifi, WifiOff, RefreshCw, ShieldCheck } from 'lucide-react'
 
-type Status = 'idle' | 'loading' | 'pending' | 'qr' | 'connected' | 'disconnecting'
+type Status = 'idle' | 'loading' | 'qr' | 'connected' | 'disconnecting'
 
 const POLL_INTERVAL_MS = 3_000
 
@@ -37,7 +32,7 @@ export default function WhatsAppConnectClient({
     }
   }, [])
 
-  // Polling em 'qr': verifica se a conexão foi estabelecida
+  // Polling em 'qr': verifica a cada 3s se a conexão foi estabelecida
   const startConnectionPolling = useCallback(() => {
     stopPolling()
     intervalRef.current = setInterval(async () => {
@@ -49,24 +44,10 @@ export default function WhatsAppConnectClient({
     }, POLL_INTERVAL_MS)
   }, [storeId, stopPolling])
 
-  // Polling em 'pending': aguarda o webhook QRCODE_UPDATED salvar o QR no banco
-  const startQrPolling = useCallback(() => {
-    stopPolling()
-    intervalRef.current = setInterval(async () => {
-      const { qrCodeBase64 } = await getWhatsAppQrCode(storeId)
-      if (qrCodeBase64) {
-        stopPolling()
-        setQrBase64(qrCodeBase64)
-        setStatus('qr')
-      }
-    }, POLL_INTERVAL_MS)
-  }, [storeId, stopPolling])
-
   useEffect(() => {
     if (status === 'qr') startConnectionPolling()
-    else if (status === 'pending') startQrPolling()
     return stopPolling
-  }, [status, startConnectionPolling, startQrPolling, stopPolling])
+  }, [status, startConnectionPolling, stopPolling])
 
   async function handleGenerate() {
     setStatus('loading')
@@ -80,13 +61,8 @@ export default function WhatsAppConnectClient({
       return
     }
 
-    if (result.qrCodeBase64) {
-      setQrBase64(result.qrCodeBase64)
-      setStatus('qr')
-    } else {
-      // QR chegará via webhook QRCODE_UPDATED — entrar em modo polling
-      setStatus('pending')
-    }
+    setQrBase64(result.qrCodeBase64)
+    setStatus('qr')
   }
 
   async function handleDisconnect() {
@@ -136,31 +112,6 @@ export default function WhatsAppConnectClient({
             : <><WifiOff className="w-4 h-4" /> Desconectar WhatsApp</>
           }
         </button>
-      </div>
-    )
-  }
-
-  // ── Estado: aguardando QR via webhook ─────────────────────────────────────
-  if (status === 'pending') {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-start gap-4 bg-slate-50 border border-slate-100 rounded-2xl p-6">
-          <div className="w-10 h-10 bg-slate-200 rounded-xl flex items-center justify-center shrink-0">
-            <Loader2 className="w-5 h-5 text-slate-500 animate-spin" />
-          </div>
-          <div>
-            <p className="text-sm font-black text-slate-700">Gerando QR Code...</p>
-            <p className="text-xs font-medium text-slate-500 mt-0.5">
-              Aguardando a Evolution API gerar o código. Isso leva alguns segundos.
-            </p>
-          </div>
-        </div>
-
-        {error && (
-          <p className="text-sm font-bold text-rose-500 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">
-            {error}
-          </p>
-        )}
       </div>
     )
   }
@@ -254,7 +205,7 @@ export default function WhatsAppConnectClient({
         className="flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all shadow-sm shadow-emerald-200"
       >
         {status === 'loading'
-          ? <><Loader2 className="w-4 h-4 animate-spin" /> Conectando ao servidor...</>
+          ? <><Loader2 className="w-4 h-4 animate-spin" /> Aguardando QR Code...</>
           : <><ShieldCheck className="w-4 h-4" /> Gerar QR Code de Conexao</>
         }
       </button>
