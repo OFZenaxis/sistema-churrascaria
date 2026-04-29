@@ -61,11 +61,11 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   // QR síncrono — raro mas possível
   let qrCodeBase64: string | null = createData?.qrcode?.base64 || createData?.base64 || null
 
-  // 4. Polling — 3s inicial + 15x / 3s = até 48s total
+  // 4. Polling — 15s inicial (Baileys respira) + 5x / 8s = até 55s total
   if (!qrCodeBase64) {
-    await new Promise(r => setTimeout(r, 3000))
+    await new Promise(r => setTimeout(r, 15000))
 
-    for (let i = 1; i <= 15; i++) {
+    for (let i = 1; i <= 5; i++) {
       const pollRes = await fetch(`${apiUrl}/instance/connect/${newInstanceName}`, {
         method: 'GET',
         headers: { apikey: apiKey },
@@ -82,7 +82,7 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
       qrCodeBase64 = pollData?.base64 || pollData?.qrcode?.base64 || null
       if (qrCodeBase64) break
 
-      await new Promise(r => setTimeout(r, 3000))
+      await new Promise(r => setTimeout(r, 8000))
     }
   }
 
