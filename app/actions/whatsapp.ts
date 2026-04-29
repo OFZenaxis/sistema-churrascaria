@@ -16,12 +16,12 @@ function getEvolutionConfig(): { apiUrl: string; apiKey: string } | null {
  * Gera o QR Code de conexão WhatsApp via Evolution API v2.
  *
  * Fluxo:
- *  1. DELETE /instance/delete  → remove instância existente (best-effort)
- *  2. sleep(5000)              → garante limpeza completa do Baileys
- *  3. POST /instance/create    → cria instância nova
- *  4. Polling (4x / 2.5s)     → GET /instance/connect aguarda o Baileys gerar o QR
- *  5. QR encontrado            → salva Prisma + retorna base64
- *  6. Esgotado                 → retorna erro de timeout
+ *  1. Busca instância antiga no Prisma e dispara DELETE fire-and-forget (sem await)
+ *  2. Gera nome único com timestamp → elimina session lock do Baileys no Docker
+ *  3. POST /instance/create com o novo nome
+ *  4. Polling (4x / 2.5s) → GET /instance/connect/${newInstanceName}
+ *  5. QR encontrado → atualiza instanceName + persiste Prisma + retorna base64
+ *  6. Esgotado → retorna erro de timeout
  */
 export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   const session = await requireAdminSession(storeId)
@@ -33,37 +33,42 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   }
 
   const { apiUrl, apiKey } = config
-  const instanceName = `loja-${slug}`
 
-  // Passo 1: DELETE incondicional — remove instância anterior
-  try {
-    const deleteRes = await fetch(`${apiUrl}/instance/delete/${instanceName}`, {
+  // Passo 1: Busca instância anterior e dispara DELETE fire-and-forget
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    select: { whatsappInstance: true },
+  })
+
+  if (store?.whatsappInstance) {
+    const oldInstance = store.whatsappInstance
+    // Fire-and-forget — não bloqueia a criação da nova instância
+    fetch(`${apiUrl}/instance/delete/${oldInstance}`, {
       method: 'DELETE',
       headers: { apikey: apiKey },
-      cache: 'no-store',
+    }).then(res => {
+      logger.info({ module: 'whatsapp', storeId, oldInstance, deleteStatus: res.status }, 'DELETE fire-and-forget concluído')
+    }).catch(err => {
+      logger.warn({ module: 'whatsapp', storeId, oldInstance, err }, 'DELETE fire-and-forget falhou — ignorando')
     })
-    logger.info(
-      { module: 'whatsapp', storeId, instanceName, deleteStatus: deleteRes.status },
-      'DELETE /instance/delete concluído'
-    )
-  } catch (err) {
-    logger.warn({ module: 'whatsapp', storeId, instanceName, err }, 'Erro de rede no DELETE — prosseguindo')
   }
 
-  // Passo 2: Aguarda limpeza completa do Baileys
-  await new Promise(r => setTimeout(r, 5000))
+  // Passo 2: Nome único com timestamp — evita session lock do Baileys
+  const newInstanceName = `${slug}-${Date.now()}`
 
-  // Passo 3: POST /instance/create
+  logger.info({ module: 'whatsapp', storeId, newInstanceName }, 'Criando nova instância WhatsApp')
+
+  // Passo 3: POST /instance/create com o novo nome
   let createRes: Response
   try {
     createRes = await fetch(`${apiUrl}/instance/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: apiKey },
-      body: JSON.stringify({ instanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
+      body: JSON.stringify({ instanceName: newInstanceName, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
       cache: 'no-store',
     })
   } catch (err) {
-    logger.error({ module: 'whatsapp', storeId, instanceName, err }, 'Erro de rede no POST /instance/create')
+    logger.error({ module: 'whatsapp', storeId, newInstanceName, err }, 'Erro de rede no POST /instance/create')
     return { success: false as const, error: 'Erro de rede ao conectar com o servidor de WhatsApp.' }
   }
 
@@ -74,21 +79,14 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
 
   if (createRes.status !== 201) {
     logger.error(
-      { module: 'whatsapp', storeId, instanceName, httpStatus: createRes.status, apiMessage: createData.message },
+      { module: 'whatsapp', storeId, newInstanceName, httpStatus: createRes.status, apiMessage: createData.message },
       'Erro fatal no POST /instance/create'
     )
     return { success: false as const, error: createData.message ?? 'Erro ao criar instância na Evolution API.' }
   }
 
-  const finalInstanceName = createData.instance?.instanceName ?? instanceName
-
-  await prisma.store.update({
-    where: { id: storeId },
-    data: { whatsappInstance: finalInstanceName, whatsappConnected: false, whatsappQrCode: null },
-  })
-
   logger.info(
-    { module: 'whatsapp', storeId, instanceName: finalInstanceName },
+    { module: 'whatsapp', storeId, newInstanceName },
     'POST /instance/create → 201 — iniciando polling GET /instance/connect'
   )
 
@@ -99,30 +97,30 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
 
     let pollData: Record<string, unknown>
     try {
-      const pollRes = await fetch(`${apiUrl}/instance/connect/${finalInstanceName}`, {
+      const pollRes = await fetch(`${apiUrl}/instance/connect/${newInstanceName}`, {
         headers: { apikey: apiKey },
         cache: 'no-store',
       })
       pollData = await pollRes.json() as Record<string, unknown>
     } catch (err) {
-      logger.warn({ module: 'whatsapp', storeId, instanceName: finalInstanceName, attempt: i + 1, err }, 'Erro de rede no polling')
+      logger.warn({ module: 'whatsapp', storeId, newInstanceName, attempt: i + 1, err }, 'Erro de rede no polling')
       continue
     }
 
     const qrCodeBase64 = (pollData.base64 as string | undefined) ?? null
 
     logger.info(
-      { module: 'whatsapp', storeId, instanceName: finalInstanceName, attempt: i + 1, qrPresent: !!qrCodeBase64, pollBody: pollData },
+      { module: 'whatsapp', storeId, newInstanceName, attempt: i + 1, qrPresent: !!qrCodeBase64, pollBody: pollData },
       `Polling GET /instance/connect — tentativa ${i + 1}/${MAX_ATTEMPTS}`
     )
 
     if (qrCodeBase64) {
       await prisma.store.update({
         where: { id: storeId },
-        data: { whatsappInstance: finalInstanceName, whatsappConnected: false },
+        data: { whatsappInstance: newInstanceName, whatsappConnected: false, whatsappQrCode: null },
       })
       logger.info(
-        { module: 'whatsapp', storeId, instanceName: finalInstanceName, attempt: i + 1 },
+        { module: 'whatsapp', storeId, newInstanceName, attempt: i + 1 },
         'QR Code obtido com sucesso'
       )
       return { success: true as const, qrCodeBase64 }
@@ -130,7 +128,7 @@ export async function generateWhatsAppQRCode(storeId: string, slug: string) {
   }
 
   logger.error(
-    { module: 'whatsapp', storeId, instanceName: finalInstanceName },
+    { module: 'whatsapp', storeId, newInstanceName },
     `Timeout na geração do QR Code após ${MAX_ATTEMPTS} tentativas`
   )
   return { success: false as const, error: 'Timeout na geração do QR Code. Tente novamente.' }
@@ -161,7 +159,7 @@ export async function checkWhatsAppConnection(storeId: string) {
 
   const store = await prisma.store.findUnique({
     where: { id: storeId },
-    select: { whatsappInstance: true, whatsappConnected: true },
+    select: { slug: true, whatsappInstance: true, whatsappConnected: true },
   })
 
   if (!store?.whatsappInstance) return { connected: false }
@@ -186,7 +184,7 @@ export async function checkWhatsAppConnection(storeId: string) {
         where: { id: storeId },
         data: { whatsappConnected: true, whatsappQrCode: null },
       })
-      revalidatePath(`/${store.whatsappInstance.replace('loja-', '')}/admin/configuracoes/whatsapp`)
+      revalidatePath(`/${store.slug}/admin/configuracoes/whatsapp`)
     }
 
     return { connected: isOpen }
