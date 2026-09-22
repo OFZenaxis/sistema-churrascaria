@@ -30,11 +30,21 @@ export function proxy(req: NextRequest) {
 
   // 2. Determina se é domínio raiz (marketing) ou tenant (subdomínio/custom domain)
   //    — Calculado cedo para ser usado na proteção admin e no roteamento
+  //
+  // DEV-only: em localhost não há subdomínio, então o tenant é resolvido pelo
+  // caminho (localhost:3000/{slug}/admin). Tratamos qualquer host localhost/
+  // 127.0.0.1 (em qualquer porta) como "domínio raiz" para que o Next sirva as
+  // rotas /[slug]/... diretamente, sem rewrite. Em produção este ramo é inerte.
+  const isDevLocalhost =
+    process.env.NODE_ENV !== 'production' &&
+    (hostname.startsWith('localhost') || hostname.startsWith('127.0.0.1'))
+
   const isRootDomain =
     hostname === BASE_DOMAIN ||
     hostname === `www.${BASE_DOMAIN}` ||  // www não é subdomínio de loja
     hostname === 'localhost:3000' ||
-    hostname === 'localhost:3001'
+    hostname === 'localhost:3001' ||
+    isDevLocalhost
 
   // 3. Proteção de Rotas Administrativas (Auth)
   //    No modelo subdomain, as rotas admin são /admin, /admin/cardapio, etc. (sem slug no path)

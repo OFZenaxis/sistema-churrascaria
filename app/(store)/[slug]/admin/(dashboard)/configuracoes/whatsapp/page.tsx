@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { getLojistaSession } from '@/app/actions/adminAuth'
 import { redirect, notFound } from 'next/navigation'
 import { tenantWhere } from '@/lib/tenant'
+import { adminPath } from '@/lib/adminPath'
 import WhatsAppConnectClient from './WhatsAppConnectClient'
 
 export const dynamic = 'force-dynamic'
@@ -26,7 +27,7 @@ export default async function WhatsAppConfigPage({
   if (!store) notFound()
 
   const session = await getLojistaSession(store.id)
-  if (!session || session.storeId !== store.id) redirect('/admin/login')
+  if (!session || session.storeId !== store.id) redirect(adminPath(slug, '/admin/login'))
 
   return (
     <div className="p-8 max-w-3xl">

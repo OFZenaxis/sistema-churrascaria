@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import StoreToggle from './StoreToggle'
 import { tenantWhere } from '@/lib/tenant'
+import { adminPath } from '@/lib/adminPath'
 import RevenueChart, { type RevenuePoint } from '@/components/admin/RevenueChart'
 import DashboardFilter, { type PeriodValue } from '@/components/admin/DashboardFilter'
 import { Suspense } from 'react'
@@ -138,10 +139,10 @@ export default async function AdminDashboardPage({
     where: tenantWhere(slug),
     select: { id: true, name: true, isOpen: true, brandColor: true }
   })
-  if (!store) redirect('/admin/login')
+  if (!store) redirect(adminPath(slug, '/admin/login'))
 
   const session = await getLojistaSession(store.id)
-  if (!session || session.storeId !== store.id) redirect('/admin/login')
+  if (!session || session.storeId !== store.id) redirect(adminPath(slug, '/admin/login'))
 
   const brandColor = store.brandColor ?? '#10b981'
 

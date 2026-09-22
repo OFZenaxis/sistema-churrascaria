@@ -121,6 +121,16 @@
 
 ---
 
+### BUG-076 — Dashboard admin inacessível em localhost (redirects assumem subdomínio)
+
+- **Arquivos:** `proxy.ts`, `app/(store)/[slug]/admin/login/page.tsx`, `app/(store)/[slug]/admin/(dashboard)/layout.tsx`, `app/(store)/[slug]/admin/(dashboard)/AdminSidebar.tsx`, `app/(store)/[slug]/admin/pagamento/page.tsx`, `app/(store)/[slug]/admin/(dashboard)/{page,cardapio,entregas,configuracoes,configuracoes/pagamentos,configuracoes/whatsapp,personalizacao,assinatura}/...`, `lib/adminPath.ts` (novo)
+- **Status:** RESOLVIDO
+- **Correção aplicada (2026-06-03):** Criado helper DEV-only `adminPath(slug, path)` em `lib/adminPath.ts` que prefixa `/{slug}` apenas fora de produção. Todos os redirects/links do admin (`/admin`, `/admin/login`, `/admin/pagamento`) passaram a usá-lo. `proxy.ts` ganhou ramo `isDevLocalhost` (gated a `NODE_ENV !== 'production'`) que trata qualquer host localhost/127.0.0.1 como domínio raiz, servindo `/[slug]/admin` por caminho. Logout do sidebar redireciona por caminho em dev e mantém o subdomínio em prod. **Produção byte-a-byte idêntica** — em prod `adminPath` retorna o caminho original e o ramo localhost é inerte.
+- **Descrição:** A arquitetura é subdomain-based em produção (`loja.saiudelivery.com.br/admin`), onde o `proxy.ts` reescreve `/admin` → `/{slug}/admin`. Todo o admin navega com caminhos relativos à raiz (`/admin*`). Em localhost (modelo de caminho `localhost:3000/{slug}/admin`) esses caminhos perdem o slug: após o login `window.location.href = '/admin'` ia para uma rota sem tenant, e os guards de sessão redirecionavam para `/admin/login` (sem slug) — o lojista caía de volta no login. **Cookie não era a causa**: nenhum atributo `domain` é setado (cookie já é host-only) e `secure` já é gated a produção.
+- **Impacto:** 🟠 ALTO — impossível usar o painel admin em ambiente de desenvolvimento local.
+
+---
+
 ## AUDITORIA 2 — 2026-04-27 (46 novos itens)
 
 > Última atualização de status: 2026-04-27 (Sessão 2 — 11 bugs adicionais resolvidos)

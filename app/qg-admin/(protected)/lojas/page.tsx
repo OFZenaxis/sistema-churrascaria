@@ -56,7 +56,12 @@ export default async function QGLojasPage() {
             <tbody>
               {stores.map((store, i) => {
                 const owner = store.users[0]
-                const storeUrl = `https://${store.slug}.${baseDomain}/admin`
+                // PROD: subdomínio do tenant (byte-a-byte igual). DEV: caminho
+                // local, pois {slug}.saiudelivery.com.br não resolve em localhost.
+                const storeUrl =
+                  process.env.NODE_ENV === 'production'
+                    ? `https://${store.slug}.${baseDomain}/admin`
+                    : `http://localhost:3000/${store.slug}/admin`
                 return (
                   <tr
                     key={store.id}

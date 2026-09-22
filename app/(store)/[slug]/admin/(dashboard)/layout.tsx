@@ -3,6 +3,7 @@ import { getLojistaSession } from '@/app/actions/adminAuth'
 import { redirect, notFound } from 'next/navigation'
 import { AdminLayoutWrapper } from './AdminLayoutWrapper'
 import { tenantWhere } from '@/lib/tenant'
+import { adminPath } from '@/lib/adminPath'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +25,7 @@ export default async function AdminDashboardLayout({
 
   // Bloqueio de Inadimplentes / Adesão Pendente
   if (store.subscriptionStatus === 'PENDING' || store.subscriptionStatus === 'CANCELED') {
-    redirect('/admin/pagamento')
+    redirect(adminPath(slug, '/admin/pagamento'))
   }
 
   // 🔒 Lê o cookie isolado deste tenant específico
@@ -33,10 +34,10 @@ export default async function AdminDashboardLayout({
   try {
     session = await getLojistaSession(store.id)
   } catch {
-    redirect('/admin/login')
+    redirect(adminPath(slug, '/admin/login'))
   }
   if (!session || session.storeId !== store.id) {
-    redirect('/admin/login')
+    redirect(adminPath(slug, '/admin/login'))
   }
 
   return (

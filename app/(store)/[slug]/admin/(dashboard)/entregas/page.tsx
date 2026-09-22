@@ -3,6 +3,7 @@ import { getLojistaSession } from '@/app/actions/adminAuth'
 import { redirect, notFound } from 'next/navigation'
 import ZonasClient from './ZonasClient'
 import { tenantWhere } from '@/lib/tenant'
+import { adminPath } from '@/lib/adminPath'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,7 +31,7 @@ export default async function EntregasPage({
 
   const session = await getLojistaSession(store.id)
   if (!session || session.storeId !== store.id) {
-    redirect('/admin/login')
+    redirect(adminPath(slug, '/admin/login'))
   }
 
   return (

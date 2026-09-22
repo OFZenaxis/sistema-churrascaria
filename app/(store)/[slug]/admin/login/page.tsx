@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { Mail, Lock, ArrowRight, Loader2, AlertCircle } from 'lucide-react'
 import { loginLojista } from '@/app/actions/adminAuth'
+import { adminPath } from '@/lib/adminPath'
 import { useParams } from 'next/navigation'
 import Image from 'next/image'
 
@@ -27,7 +28,7 @@ export default function AdminLogin() {
     setIsLoading(false)
 
     if (res.success) {
-      window.location.href = '/admin'
+      window.location.href = adminPath(slug, '/admin')
     } else {
       setError(res.error || 'Credenciais inválidas. Tente novamente.')
       setPassword('')

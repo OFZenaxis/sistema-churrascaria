@@ -5,7 +5,10 @@
       "Bash(node -e ':*)",
       "Bash(npm install:*)",
       "Bash(npx prisma:*)",
-      "Bash(find \"C:\\\\Users\\\\Coutadazz\\\\Desktop\\\\Projetos Cursor\\\\sistema-churrascaria\" -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec grep -h \"process\\\\.env\\\\.[A-Z_]*\" {} +)"
+      "Bash(find \"C:\\\\Users\\\\Coutadazz\\\\Desktop\\\\Projetos Cursor\\\\sistema-churrascaria\" -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" \\\\\\) -exec grep -h \"process\\\\.env\\\\.[A-Z_]*\" {} +)",
+      "Bash(git -C \"c:/Users/Coutadazz/Desktop/Projetos Cursor/sistema-churrascaria\" add lib/logger.ts app/actions/whatsapp.ts \"app/api/webhooks/abacatepay/route.ts\" .env.example package.json package-lock.json)",
+      "Bash(git -C 'c:/Users/Coutadazz/Desktop/Projetos Cursor/sistema-churrascaria' commit -m ' *)",
+      "Bash(git -C \"c:/Users/Coutadazz/Desktop/Projetos Cursor/sistema-churrascaria\" push origin main)"
     ]
   }
 }

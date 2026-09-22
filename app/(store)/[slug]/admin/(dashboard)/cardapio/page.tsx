@@ -3,6 +3,7 @@ import { getLojistaSession } from '@/app/actions/adminAuth'
 import { redirect } from 'next/navigation'
 import CardapioClient from './CardapioClient'
 import { tenantWhere } from '@/lib/tenant'
+import { adminPath } from '@/lib/adminPath'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,10 +18,10 @@ export default async function CardapioPage({
     where: tenantWhere(slug),
     select: { id: true }
   })
-  if (!store) redirect('/admin/login')
+  if (!store) redirect(adminPath(slug, '/admin/login'))
 
   const session = await getLojistaSession(store.id)
-  if (!session || session.storeId !== store.id) redirect('/admin/login')
+  if (!session || session.storeId !== store.id) redirect(adminPath(slug, '/admin/login'))
 
   const [products, categories] = await Promise.all([
     prisma.product.findMany({

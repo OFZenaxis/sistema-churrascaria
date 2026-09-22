@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { tenantWhere } from '@/lib/tenant'
+import { adminPath } from '@/lib/adminPath'
 import { notFound } from 'next/navigation'
 import { getSubscriptionData, getSubscriptionHistory, type AbacateCheckout } from '@/app/actions/abacatepay'
 import CancelSubscriptionButton from './CancelSubscriptionButton'
@@ -163,7 +164,7 @@ export default async function AssinaturaPage({ params }: { params: Promise<{ slu
             )}
             {(isPending || isCanceled) && (
               <Link 
-                href="/admin/pagamento"
+                href={adminPath(slug, '/admin/pagamento')}
                 className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
               >
                 Ativar Plano

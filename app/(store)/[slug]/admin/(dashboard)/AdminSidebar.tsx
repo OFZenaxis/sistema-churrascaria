@@ -21,6 +21,7 @@ import {
   MessageCircle,
 } from 'lucide-react'
 import { logoutLojista } from '@/app/actions/adminAuth'
+import { adminPath } from '@/lib/adminPath'
 import { useSidebar } from './SidebarContext'
 
 export default function AdminSidebar({
@@ -47,11 +48,17 @@ export default function AdminSidebar({
     onClose?.()
   }
 
-  const isActive = (href: string) => {
+  // Em dev (localhost) os caminhos do admin são prefixados com /{slug}; em prod
+  // permanecem relativos à raiz ("/admin"). adminPath resolve conforme o ambiente.
+  const dashboardHref = adminPath(slug, '/admin')
+  const configHref = adminPath(slug, '/admin/configuracoes')
+
+  // Recebe o href JÁ resolvido (com prefixo de slug em dev) e compara ao pathname.
+  const isActive = (resolvedHref: string) => {
     // Exact-match routes (children would otherwise falsely activate the parent)
-    if (href === '/admin') return pathname === '/admin'
-    if (href === '/admin/configuracoes') return pathname === '/admin/configuracoes'
-    return pathname.startsWith(href)
+    if (resolvedHref === dashboardHref) return pathname === dashboardHref
+    if (resolvedHref === configHref) return pathname === configHref
+    return pathname.startsWith(resolvedHref)
   }
 
   const navItems = [
@@ -72,8 +79,14 @@ export default function AdminSidebar({
   const handleLogout = async () => {
     onClose?.()
     await logoutLojista(storeId)
-    const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
-    window.location.href = `https://${slug}.${BASE_DOMAIN}/admin/login`
+    // Em dev (localhost) não há subdomínio: vai por caminho /{slug}/admin/login.
+    // Em prod mantém o redirect absoluto para o subdomínio da loja.
+    if (process.env.NODE_ENV === 'production') {
+      const BASE_DOMAIN = process.env.NEXT_PUBLIC_BASE_DOMAIN ?? 'saiudelivery.com.br'
+      window.location.href = `https://${slug}.${BASE_DOMAIN}/admin/login`
+    } else {
+      window.location.href = adminPath(slug, '/admin/login')
+    }
   }
 
   return (
@@ -114,11 +127,12 @@ export default function AdminSidebar({
       {/* ── Navegação principal ─────────────────────────────────── */}
       <nav className={`flex-1 py-6 space-y-1 ${isCollapsed ? 'px-2' : 'px-4'}`}>
         {navItems.map(({ href, label, icon: Icon }) => {
-          const active = isActive(href)
+          const resolvedHref = adminPath(slug, href)
+          const active = isActive(resolvedHref)
           return (
             <Link
               key={href}
-              href={href}
+              href={resolvedHref}
               onClick={onClose}
               title={isCollapsed ? label : undefined}
               className={`
@@ -145,11 +159,12 @@ export default function AdminSidebar({
       <div className={`border-t border-slate-200/60 py-4 space-y-1 ${isCollapsed ? 'px-2' : 'px-4'}`}>
 
         {bottomItems.map(({ href, label, icon: Icon }) => {
-          const active = isActive(href)
+          const resolvedHref = adminPath(slug, href)
+          const active = isActive(resolvedHref)
           return (
             <Link
               key={href}
-              href={href}
+              href={resolvedHref}
               onClick={onClose}
               title={isCollapsed ? label : undefined}
               className={`

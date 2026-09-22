@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { tenantWhere } from '@/lib/tenant';
+import { adminPath } from '@/lib/adminPath';
 import { notFound, redirect } from 'next/navigation';
 import { PaymentButton } from './PaymentButton';
 import { Flame, AlertTriangle, ShieldCheck } from 'lucide-react';
@@ -16,7 +17,7 @@ export default async function PagamentoPendendentePage({ params }: { params: Pro
 
   // Se já estiver ativo, não tem porquê estar aqui, manda de volta pro painel!
   if (store.subscriptionStatus === 'ACTIVE') {
-    redirect('/admin');
+    redirect(adminPath(slug, '/admin'));
   }
 
   const isCanceled = store.subscriptionStatus === 'CANCELED';
